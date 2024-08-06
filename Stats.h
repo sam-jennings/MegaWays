@@ -4,23 +4,46 @@
 #include <algorithm> 
 #include <fstream>
 #include <cmath> // Include for std::sqrt
+#include <unordered_map>
+#include <deque>
+
+template<typename T>
+class RollingBuffer {
+public:
+    RollingBuffer(size_t size) : maxSize(size) {}
+
+    void add(T value) {
+        if (buffer.size() >= maxSize) {
+            buffer.pop_front();
+        }
+        buffer.push_back(value);
+    }
+
+    const std::deque<T>& getBuffer() const { return buffer; }
+
+private:
+    size_t maxSize;
+    std::deque<T> buffer;
+};
 
 class Stats {
 public:
     std::vector<std::string> payHeaders;
     std::vector<double> payVector;
-    std::vector<std::vector<double>> individualPays; // Each inner vector stores individual pays for "Base", "Wheel", "Free", "Total"
-    std::vector< std::unordered_map<double, int>> payFrequencies; // For storing frequencies of pays
+   // std::vector<std::vector<double>> individualPays; // Each inner vector stores individual pays for "Base", "Wheel", "Free", "Total"
+    RollingBuffer<double> individualPaysBuffer;
+    std::vector< std::unordered_map<double, long long>> payFrequencies; // For storing frequencies of pays
     std::vector<double> standardDeviations; // For storing calculated standard deviations
     std::vector<std::vector<int>> baseSymHits, freeSymHits, baseSymPays, freeSymPays; // 2D array for tracking hits, size: numSymbols x numReels
     int baseGameHits, bonusGameActivated, fgActivated, wwActivated, ewActivated, jpActivated;
+    std::vector<int> bonusActivations;
     SymbolStructure symbolStructure;
     std::unordered_map<int, int> scatterHits, tumbleFrequencies;
     int numIterations;
     double cost;
 
     //explicit Stats(const GameConfig& config, ofstream* file, int numIterations) {
-    explicit Stats(const GameConfig& config, int _numIterations) {
+    explicit Stats(const GameConfig& config, int _numIterations ) :individualPaysBuffer(1000) {
         numIterations = _numIterations;
         baseGameHits = 0;
         bonusGameActivated = 0;
@@ -28,11 +51,12 @@ public:
         wwActivated = 0;
         ewActivated = 0;
         jpActivated = 0;
+        bonusActivations.resize(5, 0);
         numIterations = numIterations;
         cost = config.cost;
         payHeaders = config.payHeaders;
         payVector.resize(payHeaders.size());
-        individualPays.resize(payHeaders.size());
+       // individualPays.resize(payHeaders.size());
         payFrequencies.resize(payHeaders.size());
         baseSymHits.resize(config.symbolList.size(), std::vector<int>(config.numReels, 0));
         freeSymHits.resize(config.symbolList.size(), std::vector<int>(config.numReels, 0));
@@ -85,7 +109,8 @@ public:
     void completeWager(std::vector<double> pays) {
         for (int i = 0; i < pays.size(); i++) {
             payVector[i] += pays[i];
-            individualPays[i].push_back(pays[i]);
+            //individualPays[i].push_back(pays[i]);
+            individualPaysBuffer.add(pays[i]);
             payFrequencies[i][pays[i]]++;
         }
         if (pays[0] > 0) { //check what counts as a base game hit
@@ -192,9 +217,9 @@ public:
             this->payVector[i] += other.payVector[i];
         }
 
-        for (size_t i = 0; i < individualPays.size(); ++i) {
+        /*for (size_t i = 0; i < individualPays.size(); ++i) {
             individualPays[i].insert(individualPays[i].end(), other.individualPays[i].begin(), other.individualPays[i].end());
-        }
+        }*/
 
         // Aggregate tumble frequencies
         for (const auto& pair : other.tumbleFrequencies) {
@@ -218,7 +243,8 @@ public:
 
     // Method to get payout from the last spin
     double getLastSpinPayout() const {
-        return individualPays[3].back();
+        if (individualPaysBuffer.getBuffer().empty()) return 0.0;
+        return individualPaysBuffer.getBuffer().back();
     }
 
     

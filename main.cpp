@@ -211,8 +211,7 @@ void GameInstance::playBaseGame(int numSpins) {
 
         RandomLogGenerator::endRound();
         RandomLogGenerator::resetRoundEndFlag();
-        // pays[6] = pays[0] + ... + pays[5]
-        pays[6] = std::accumulate(pays.begin(), pays.end() - 1, 0.0);
+        pays[-1] = std::accumulate(pays.begin(), pays.end() - 1, 0.0);
 
        
         gameStats.completeWager(pays);
@@ -696,23 +695,23 @@ void outputData(std::ofstream& file, Stats gameStats) {
     // Output the average tumble frequency
     file << "Average Tumble Frequency: " << gameStats.calculateAverageTumbleFrequency() << '\n';
 }
-void printFrequencyTable(std::ofstream& file, const std::string& name, const std::unordered_map<double, int>& frequencyMap) {
-    // First, extract and sort the frequencies
-    std::vector<std::pair<double, int>> freqVector(frequencyMap.begin(), frequencyMap.end());
-    std::sort(freqVector.begin(), freqVector.end(), [](const auto& a, const auto& b) {
-        return a.first < b.first;
-        });
+//void printFrequencyTable(std::ofstream& file, const std::string& name, const std::unordered_map<double, int>& frequencyMap) {
+//    // First, extract and sort the frequencies
+//    std::vector<std::pair<double, int>> freqVector(frequencyMap.begin(), frequencyMap.end());
+//    std::sort(freqVector.begin(), freqVector.end(), [](const auto& a, const auto& b) {
+//        return a.first < b.first;
+//        });
+//
+//    // Now print them to the file
+//    file << name << " Pay Frequencies\n";
+//    file << "Pay\tFrequency\n";
+//    for (const auto& pair : freqVector) {
+//        file << pair.first << "\t" << pair.second << "\n";
+//    }
+//    file << "\n"; // Add an extra newline for readability
+//}
 
-    // Now print them to the file
-    file << name << " Pay Frequencies\n";
-    file << "Pay\tFrequency\n";
-    for (const auto& pair : freqVector) {
-        file << pair.first << "\t" << pair.second << "\n";
-    }
-    file << "\n"; // Add an extra newline for readability
-}
-
-void printFrequencyTableToFile(const std::string& categoryName, const std::unordered_map<double, int>& frequencyMap) {
+void printFrequencyTableToFile(const std::string& categoryName, const std::unordered_map<double, long long>& frequencyMap) {
     // Construct a unique filename for this category
     std::string filename = "pay_frequency_" + categoryName + ".txt";
 
