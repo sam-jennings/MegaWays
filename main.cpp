@@ -128,9 +128,7 @@ private:
 void GameInstance::playBaseGame(int numSpins) {
     bool addMult;
     vector<double> baseVector;
-   /* double bonus_pay = 0;
-    double free_pay = 0;
-    double total_pay = 0;*/
+  
     double temp_pay, multiplier;
     vector<double> temp_pays;
 
@@ -211,7 +209,7 @@ void GameInstance::playBaseGame(int numSpins) {
 
         RandomLogGenerator::endRound();
         RandomLogGenerator::resetRoundEndFlag();
-        pays[-1] = std::accumulate(pays.begin(), pays.end() - 1, 0.0);
+        pays[pays.size() - 1] = std::accumulate(pays.begin(), pays.end() - 1, 0.0);
 
        
         gameStats.completeWager(pays);
@@ -258,72 +256,6 @@ vector<double> GameInstance::handleCascades(Screen& screen, const ReelSet& reelS
 
     return { initialWin, tumbleWin };
 }
-//void GameInstance::playFullCycle() {
-//
-//
-//    // Calculate complete cycle
-//    int cycle = baseReelSet.getCycle();
-//
-//    vector<int> currentIndices(baseReelSet.reels.size(), 0);
-//
-//    // Calculate total possible states
-//    int totalPossibleStates = 1;
-//    for (const auto& reel : baseReelSet.reels) {
-//        //baseReelSet.push_back(reel.symbols.size());
-//        totalPossibleStates *= reel.symbols.size();
-//    }
-//
-//    // Iterate through all possible states
-//    for (int state = 0; state < totalPossibleStates; ++state) {
-//
-//        int weight = 1;
-//        // product of symbol weights at current indices
-//        for (int i = 0; i < baseReelSet.reels.size(); ++i) {
-//            weight *= baseReelSet.reels[i].isWeighted() ? baseReelSet.reels[i].weights[currentIndices[i]] : 1;
-//        }
-//
-//        // Play spin with current indices
-//        for (int i = 0; i < weight; ++i) {
-//            vector<double> pays(payHeaders.size(), 0); // {base_pay, free_pay, scatter_pay, total_pay}
-//
-//            // Create a screen instance to simulate the spin
-//            Screen screen(baseReelSet.reels.size(), numRows);
-//            screen.generateScreen(baseReelSet, currentIndices);
-//
-//            // Calculate list of symbols and their payouts
-//            pays[0] += calculateWaysWins(screen, true, baseWheelMultipliers);
-//
-//            //If 3 FG symbols appear, trigger 5 free games with free game reelset
-//            /*int fgCount = screen.countSymbolOnScreen("F2", false);
-//            if (fgCount == 3) {
-//                gameStats.activateFreeGame();
-//                vector<double> tempPay = playFreeGames(5);
-//                pays[1] += tempPay[0];
-//                pays[2] += tempPay[1];
-//            }*/
-//
-//            //Implement scatter symbol
-//            int scatterCount = screen.countSymbolOnScreen("F1", false);
-//            // If 2 scatters award prize, if 3 scatters award 3x prize
-//            if (scatterCount >= 2) {
-//                pays[2] += awardScatterPrize(scatterCount);
-//            }
-//
-//            pays[3] = pays[0] + pays[1] + pays[2];
-//            gameStats.completeWager(pays);
-//            RandomLogGenerator::endRound();
-//        }
-//        // Update current indices for the next state
-//        for (int i = baseReelSet.reels.size() - 1; i >= 0; --i) {
-//            currentIndices[i]++;
-//            if (currentIndices[i] < baseReelSet.reels[i].symbols.size()) {
-//                break;
-//            }
-//            currentIndices[i] = 0;
-//        }
-//    }
-//
-//}
 
 double GameInstance::calculateWaysWins(Screen& screen, bool baseGame) {
     double totalPay = 0;
@@ -477,120 +409,6 @@ private:
     GameConfig& gameConfig;
 };
 
-//void outputData(ofstream& file, Stats gameStats) {
-//    file << "RTP and Standard Deviation Breakdown\n";
-//    file << left << setw(15) << "Name" << setw(15) << "RTP" << setw(15) << "StDev" << endl;
-//
-//    for (size_t i = 0; i < gameStats.payHeaders.size(); ++i) {
-//        double rtp = gameStats.payVector[i] / (gameStats.numIterations * gameStats.cost);
-//        double stDev = gameStats.standardDeviations[i];
-//        file << left << setw(15) << gameStats.payHeaders[i] << setw(15) << setprecision(4) << rtp << setw(15) << setprecision(4) << stDev << endl;
-//    }
-//    file << "----------------------------------------\n";
-//
-//    // Output the total pay
-//
-//    file << "Iterations: " << gameStats.numIterations << endl;
-//    file << "Total Pay: " << gameStats.payVector[3] << endl;
-//
-//    file << left << setw(15) << "Feature" << setw(15) << "Hits" << setw(15) << "Hit Rate" << endl;
-//    file << left << setw(15) << "Base Game " << setw(15) << gameStats.baseGameHits << setw(15) << (double)gameStats.numIterations / gameStats.baseGameHits << endl;
-//    file << left << setw(15) << "Bonus Game" << setw(15) << gameStats.bonusGameActivated << setw(15) << (double)gameStats.numIterations / gameStats.bonusGameActivated << endl;
-//    file << left << setw(15) << "Wild Win" << setw(15) << gameStats.wwActivated << setw(15) << (double)gameStats.numIterations / gameStats.wwActivated << endl;
-//    file << left << setw(15) << "Expanded Win" << setw(15) << gameStats.ewActivated << setw(15) << (double)gameStats.numIterations / gameStats.ewActivated << endl;
-//    file << left << setw(15) << "Free Game" << setw(15) << gameStats.fgActivated << setw(15) << (double)gameStats.numIterations / gameStats.fgActivated << endl;
-//    file << left << setw(15) << "JackPot" << setw(15) << gameStats.jpActivated << setw(15) << (double)gameStats.numIterations / gameStats.jpActivated << endl;
-//
-//
-//    file << "----------------------------------------\n";
-//
-//    // Output the table of symbol hits
-//    file << "Base Hits\n";
-//    file << "Symbol" << std::setw(10); // Adjust width as needed
-//    for (size_t i = 0; i < gameStats.baseSymHits[0].size(); ++i) {
-//        file << std::right << std::setw(10) << i + 1; // Keep column widths consistent
-//    }
-//    file << "\n";
-//    for (size_t i = 0; i < gameStats.baseSymHits.size(); ++i) {
-//        file << std::left << std::setw(10) << gameStats.symbolStructure.getSymbols()[i];
-//        for (const auto& hits : gameStats.baseSymHits[i]) {
-//            file << std::right << std::setw(10) << hits;
-//        }
-//        file << "\n";
-//    }
-//
-//    file << "----------------------------------------\n";
-//
-//    // Output the table of symbol pays
-//    file << "Base Pays\n";
-//    file << "Symbol" << std::setw(10); // Adjust width as needed
-//    for (size_t i = 0; i < gameStats.baseSymPays[0].size(); ++i) {
-//        file << std::right << std::setw(10) << i + 1; // Keep column widths consistent
-//    }
-//    file << "\n";
-//    for (size_t i = 0; i < gameStats.baseSymPays.size(); ++i) {
-//        file << std::left << std::setw(10) << gameStats.symbolStructure.getSymbols()[i];
-//        for (const auto& hits : gameStats.baseSymPays[i]) {
-//            file << std::right << std::setw(10) << hits;
-//        }
-//        file << "\n";
-//    }
-//
-//    file << "----------------------------------------\n";
-//
-//    // Output the table of symbol hits
-//    file << "Free Hits\n";
-//    file << "Symbol" << std::setw(10); // Adjust width as needed
-//    for (size_t i = 0; i < gameStats.freeSymHits[0].size(); ++i) {
-//        file << std::right << std::setw(10) << i + 1; // Keep column widths consistent
-//    }
-//    file << "\n";
-//    for (size_t i = 0; i < gameStats.freeSymHits.size(); ++i) {
-//        file << std::left << std::setw(10) << gameStats.symbolStructure.getSymbols()[i];
-//        for (const auto& hits : gameStats.freeSymHits[i]) {
-//            file << std::right << std::setw(10) << hits;
-//        }
-//        file << "\n";
-//    }
-//    file << "----------------------------------------\n";
-//    // Output the table of symbol pays
-//    file << "Free Pays\n";
-//    file << "Symbol" << std::setw(10); // Adjust width as needed
-//    for (size_t i = 0; i < gameStats.freeSymPays[0].size(); ++i) {
-//        file << std::right << std::setw(10) << i + 1; // Keep column widths consistent
-//    }
-//    file << "\n";
-//    for (size_t i = 0; i < gameStats.freeSymPays.size(); ++i) {
-//        file << std::left << std::setw(10) << gameStats.symbolStructure.getSymbols()[i];
-//        for (const auto& hits : gameStats.freeSymPays[i]) {
-//            file << std::right << std::setw(10) << hits;
-//        }
-//        file << "\n";
-//    }
-//
-//      file << "----------------------------------------\n";
-//
-//    //   // Output the scatter paytable
-//    //   file << "Scatter Paytable" << endl;
-//    //   file << "Prize" << setw(10) << "Hits" << endl;
-//    //   std::map<int, int> orderedHits(gameStats.scatterHits.begin(), gameStats.scatterHits.end());
-//    //   for (const auto& pair : orderedHits) {
-//       //	file << pair.first << setw(10) << pair.second << endl;
-//       //}
-//
-//	// Output the tumble frequencies
-//      file << "Tumble Frequencies\n";
-//	file << "Tumbles\tFrequency\n";
-//    for (const auto& pair : gameStats.tumbleFrequencies) {
-//        file << pair.first << "\t" << pair.second << "\n";
-//    }
-//	// Output the average tumble frequency
-//	file << "Average Tumble Frequency: " << gameStats.calculateAverageTumbleFrequency() << "\n";
-//
-//	
-//	
-//
-//}
 
 void outputData(std::ofstream& file, Stats gameStats) {
     file << "RTP and Standard Deviation Breakdown\n";
@@ -695,21 +513,6 @@ void outputData(std::ofstream& file, Stats gameStats) {
     // Output the average tumble frequency
     file << "Average Tumble Frequency: " << gameStats.calculateAverageTumbleFrequency() << '\n';
 }
-//void printFrequencyTable(std::ofstream& file, const std::string& name, const std::unordered_map<double, int>& frequencyMap) {
-//    // First, extract and sort the frequencies
-//    std::vector<std::pair<double, int>> freqVector(frequencyMap.begin(), frequencyMap.end());
-//    std::sort(freqVector.begin(), freqVector.end(), [](const auto& a, const auto& b) {
-//        return a.first < b.first;
-//        });
-//
-//    // Now print them to the file
-//    file << name << " Pay Frequencies\n";
-//    file << "Pay\tFrequency\n";
-//    for (const auto& pair : freqVector) {
-//        file << pair.first << "\t" << pair.second << "\n";
-//    }
-//    file << "\n"; // Add an extra newline for readability
-//}
 
 void printFrequencyTableToFile(const std::string& categoryName, const std::unordered_map<double, long long>& frequencyMap) {
     // Construct a unique filename for this category
@@ -780,11 +583,8 @@ int main() {
 
 
     // Depending on the selected mode, execute the corresponding simulation
-    if (simulationMode == EXACT_MODE) { // Simulate all possible states
-        /*fullInstance.playFullCycle();
-        numberOfSpins = fullInstance.baseReelSet.getCycle();*/
-    }
-    else if (simulationMode == RANDOM_MODE) { // Simulate number of spins
+   
+    if (simulationMode == RANDOM_MODE) { // Simulate number of spins
         
         int numThreads = 25;
         std::vector<std::future<Stats>> futures;
