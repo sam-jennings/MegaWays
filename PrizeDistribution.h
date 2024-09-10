@@ -4,11 +4,12 @@
 #include <vector>
 #include "RandomUtils.h"
 
-// Define a class to handle the prize distribution
+// Define a template class to handle the prize distribution
+template <typename PrizeType>
 class PrizeDistribution {
 private:
     std::string maskName;
-    std::vector<int> prizes;
+    std::vector<PrizeType> prizes;
     std::vector<int> weights;
 
 public:
@@ -16,10 +17,10 @@ public:
     PrizeDistribution() {}
 
     // Constructor with parameters
-    PrizeDistribution(const std::string& mask, const std::vector<int>& prizeList, const std::vector<int>& weightList)
+    PrizeDistribution(const std::string& mask, const std::vector<PrizeType>& prizeList, const std::vector<int>& weightList)
         : maskName(mask), prizes(prizeList), weights(weightList) {}
 
-    int getRandomPrize() const {
+    PrizeType getRandomPrize() const {
         // Calculate total weight
         int totalWeight = 0;
         for (int weight : weights) {
@@ -34,17 +35,17 @@ public:
     }
 
     // Change Prizes
-    void setPrizes(const std::vector<int>& newPrizes) { prizes = newPrizes; }
+    void setPrizes(const std::vector<PrizeType>& newPrizes) { prizes = newPrizes; }
     // Change Prizes by index
-    void setPrize(int index, int newPrize) { prizes[index] = newPrize; }
+    void setPrize(int index, const PrizeType& newPrize) { prizes[index] = newPrize; }
 
     // Change Weights
     void setWeights(const std::vector<int>& newWeights) { weights = newWeights; }
     // Change Weights by index
     void setWeight(int index, int newWeight) { weights[index] = newWeight; }
 
-
     // Getters
-    const std::vector<int>& getPrizes() const { return prizes; }
+    const std::vector<PrizeType>& getPrizes() const { return prizes; }
     const std::vector<int>& getWeights() const { return weights; }
 };
+

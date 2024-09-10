@@ -12,18 +12,18 @@ class RollingBuffer {
 public:
     RollingBuffer(size_t size) : maxSize(size) {}
 
-    void add(T value) {
+    void add(const std::vector<T>& value) {
         if (buffer.size() >= maxSize) {
             buffer.pop_front();
         }
         buffer.push_back(value);
     }
 
-    const std::deque<T>& getBuffer() const { return buffer; }
+    const std::deque<std::vector<T>>& getBuffer() const { return buffer; }
 
 private:
     size_t maxSize;
-    std::deque<T> buffer;
+    std::deque<std::vector<T>> buffer;
 };
 
 class Stats {
@@ -36,7 +36,7 @@ public:
     std::vector<double> standardDeviations; // For storing calculated standard deviations
     std::vector<std::vector<int>> baseSymHits, freeSymHits, baseSymPays, freeSymPays; // 2D array for tracking hits, size: numSymbols x numReels
     int baseGameHits, bonusGameActivated, fgActivated, wwActivated, ewActivated, jpActivated;
-    std::vector<int> bonusActivations;
+    std::vector<int> bonusActivationsBase, bonusActivationsFree;
     SymbolStructure symbolStructure;
     std::unordered_map<int, int> scatterHits, tumbleFrequencies;
     int numIterations;
@@ -51,7 +51,8 @@ public:
         wwActivated = 0;
         ewActivated = 0;
         jpActivated = 0;
-        bonusActivations.resize(5, 0);
+        bonusActivationsBase.resize(5, 0);
+        bonusActivationsFree.resize(5, 0);
         numIterations = numIterations;
         cost = config.cost;
         payHeaders = config.payHeaders;
@@ -109,10 +110,10 @@ public:
     void completeWager(std::vector<double> pays) {
         for (int i = 0; i < pays.size(); i++) {
             payVector[i] += pays[i];
-            //individualPays[i].push_back(pays[i]);
-            individualPaysBuffer.add(pays[i]);
+            //individualPays[i].push_back(pays[i]);            
             payFrequencies[i][pays[i]]++;
         }
+        individualPaysBuffer.add(pays);
         if (pays[0] > 0) { //check what counts as a base game hit
             baseGameHits++;
         }
@@ -137,7 +138,15 @@ public:
     void activateJP() {
 		jpActivated++;
 	}
-
+    // Methods to track activations
+    void activateBonusGame(int index, bool base) {
+        if (base) {
+			bonusActivationsBase[index]++;
+		}
+		else {
+			bonusActivationsFree[index]++;
+		}
+	}
 
     double calculateStandardDeviation(const std::vector<double>& pays) {
         if (pays.empty()) return 0.0;
@@ -239,12 +248,22 @@ public:
         this->wwActivated += other.wwActivated;
         this->ewActivated += other.ewActivated;
         this->jpActivated += other.jpActivated;
+
+        for (size_t i = 0; i < bonusActivationsBase.size(); ++i) {
+			this->bonusActivationsBase[i] += other.bonusActivationsBase[i];
+            }
+
+		for (size_t i = 0; i < bonusActivationsFree.size(); ++i) {
+            this->bonusActivationsFree[i] += other.bonusActivationsFree[i];
+		}
+
     }
 
     // Method to get payout from the last spin
     double getLastSpinPayout() const {
         if (individualPaysBuffer.getBuffer().empty()) return 0.0;
-        return individualPaysBuffer.getBuffer().back();
+        return individualPaysBuffer.getBuffer().back()[6];
+       // return individualPaysBuffer.getBuffer()[6];
     }
 
     

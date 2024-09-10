@@ -188,12 +188,41 @@ public:
         return screenJson;
     }
 
-    // Method to cascade the screen by moving symbols down. Drop symbols to fill empty cells. New cells are filled with next symbols from the reel set.
-    void cascadeSymbols(const ReelSet& reelSet, bool useDifferentReelSet, ReelSet alternateReelSet, std::vector<int>& nextIndices) {
-        for (int reel = 0; reel < numReels; ++reel) {
-            // Track where the new symbols should come from in the reel
-            int nextIndex = reelSet.reels[reel].symbols.size() - 1;
+    //// Method to cascade the screen by moving symbols down. Drop symbols to fill empty cells. New cells are filled with next symbols from the reel set.
+    //void cascadeSymbols(const ReelSet& reelSet, bool useDifferentReelSet, ReelSet alternateReelSet, std::vector<int>& nextIndices) {
+    //    for (int reel = 0; reel < numReels; ++reel) {
+    //        // Track where the new symbols should come from in the reel
+    //        int nextIndex = reelSet.reels[reel].symbols.size() - 1;
 
+    //        for (int row = numRows - 1; row >= 0; --row) {
+    //            while (grid[reel][row] == "") {
+    //                // Shift symbols above down to fill this empty position
+    //                for (int aboveRow = row; aboveRow > 0; aboveRow--) {
+    //                    grid[reel][aboveRow] = grid[reel][aboveRow - 1];
+    //                }
+
+    //                // Fill the topmost position with a new symbol
+    //                if (useDifferentReelSet) {
+    //                    alternateReelSet.spinReels();
+    //                    grid[reel][0] = alternateReelSet.reels[reel].symbols[0];
+    //                    /*int randomIndex = getRand("ALT_REEL", alternateReelSet.reels[reel].symbols.size());
+    //                    grid[reel][0] = alternateReelSet.reels[reel].symbols[randomIndex];*/
+    //                }
+    //                else {
+    //                    grid[reel][0] = reelSet.reels[reel].symbols[nextIndices[reel]];
+    //                    nextIndices[reel]--;
+    //                    if (nextIndices[reel] < 0) {
+    //                        nextIndices[reel] = reelSet.reels[reel].symbols.size() - 1;
+    //                    }
+    //                }
+    //            }
+    //        }
+    //    }
+    //}
+    void cascadeSymbols(const ReelSet& reelSet, bool useDifferentReelSet, const ReelSet& alternateReelSet, std::vector<int>& nextIndices) {
+        const ReelSet& activeReelSet = useDifferentReelSet ? alternateReelSet : reelSet;
+
+        for (int reel = 0; reel < numReels; ++reel) {
             for (int row = numRows - 1; row >= 0; --row) {
                 while (grid[reel][row] == "") {
                     // Shift symbols above down to fill this empty position
@@ -202,24 +231,15 @@ public:
                     }
 
                     // Fill the topmost position with a new symbol
-                    if (useDifferentReelSet) {
-                        alternateReelSet.spinReels();
-                        grid[reel][0] = alternateReelSet.reels[reel].symbols[0];
-                        /*int randomIndex = getRand("ALT_REEL", alternateReelSet.reels[reel].symbols.size());
-                        grid[reel][0] = alternateReelSet.reels[reel].symbols[randomIndex];*/
-                    }
-                    else {
-                        grid[reel][0] = reelSet.reels[reel].symbols[nextIndices[reel]];
-                        nextIndices[reel]--;
-                        if (nextIndices[reel] < 0) {
-                            nextIndices[reel] = reelSet.reels[reel].symbols.size() - 1;
-                        }
+                    grid[reel][0] = activeReelSet.reels[reel].symbols[nextIndices[reel]];
+                    nextIndices[reel]--;
+                    if (nextIndices[reel] < 0) {
+                        nextIndices[reel] = activeReelSet.reels[reel].symbols.size() - 1;
                     }
                 }
             }
         }
     }
-
    
 
     void markPosition(int reel, int row) {

@@ -50,22 +50,31 @@ SimulationMode simulationMode = RANDOM_MODE;
 class GameInstance {
     friend class GameConfig; // Declare GameConfig as a friend
 public:
-    explicit GameInstance(const GameConfig& config, int numIterations) : config(config), gameStats(config, numIterations) { // Initialize with config
+    explicit GameInstance(const GameConfig& config, int numIterations) : config(config), gameStats(config, numIterations), debugFile("debug.txt") { // Initialize with config
         initializeGame();
     }
+
+    ~GameInstance() {
+        if (debugFile.is_open()) {
+            debugFile.close(); // Ensure the file is closed in the destructor
+        }
+    }
+
     Stats gameStats; // Stats object for tracking game statistics
     int numRows;
     int numReels;
-    PrizeDistribution wheelActivation, freeActivation, fgPrizeDist, wildWinMult, expWinMult, directPrize, jackpotPrize;
+    PrizeDistribution<int> wheelActivation, freeActivation, wildWinMult, wildWinMultFree, expWinMult, expWinMultFree, fgPrizeDistFree, directPrize, directPrizeFree, jackpotPrize, jackpotPrizeFree;
+    PrizeDistribution<std::pair<int, int>> fgPrizeDist;
   
     Screen screen;
     int cost;
     SymbolStructure symbolStructure;
-    ReelSet baseReelSet, baseReelsLow, baseReelsHigh, tumbleReelSet, tumbleReelsLow, tumbleReelsHigh, freeReelSet, wildWinsReels, expandedReels, premiumReels;
-    vector<int> reelWeights;
+    ReelSet baseReelSet, freeReelSet, baseReelsLow, baseReelsHigh, tumbleReelSet, tumbleReelsLow, tumbleReelsHigh, tumbleFree, freeLow, freeHigh, wildWinsReels, expandedReels, premiumReels;
+    vector<int> reelWeights, reelWeightsFree;
     vector<string> payHeaders;
     vector<std::string> symbols;
     std::map<std::string, std::vector<int>>paytable;
+    ofstream debugFile;
 
     // Method to simulate a single spin and return the result
     double simulateSingleSpin() {
@@ -78,10 +87,12 @@ public:
     void playBaseGame(int numSpins);
    // void playFullCycle();
     double calculateWaysWins(Screen& screen, bool baseGame);
-    vector<double> handleCascades(Screen& screen, const ReelSet& reelSet, const ReelSet& offScreenReelSet, bool useDifferentReelSet);
+   
+    vector<double> handleCascades(Screen& screen, const ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame);
+
     double wildWin(Screen screen);
     vector<double> expandedWin();
-    vector<double> playFreeGames(int numFreeGames);
+    vector<double> playFreeGames(int numFreeGames, int numPremiumSpins);
 
 private:
     GameConfig config; // Configuration for this game instance
@@ -102,21 +113,32 @@ private:
         baseReelsHigh = config.baseReelsHigh;
         tumbleReelsHigh = config.tumbleReelsHigh;
         tumbleReelsLow = config.tumbleReelsLow;
-        freeReelSet = config.freeReels;
+        tumbleFree = config.tumbleFree;
+        freeLow = config.freeLow;
+        freeHigh = config.freeHigh;
         premiumReels = config.premiumReels;
         wildWinsReels = config.wildWinsReels;
         expandedReels = config.expandedReels;
         wildWinMult = config.wildWinMult;
+        wildWinMultFree = config.wildWinMultFree;
         expWinMult = config.expWinMult;
+        expWinMultFree = config.expWinMultFree;
         directPrize = config.directPrize;
+        directPrizeFree = config.directPrizeFree;
         jackpotPrize = config.jackpotPrize;
+        jackpotPrizeFree = config.jackpotPrizeFree;
         fgPrizeDist = config.fgPrizeDist;
+        fgPrizeDistFree = config.fgPrizeDistFree;
         reelWeights = config.reelWeights;
+        reelWeightsFree = config.reelWeightsFree;
         screen.resize(numReels, numRows);
         cost = config.cost;
         symbols = symbolStructure.getSymbols();
         paytable = symbolStructure.getPaytable();
 
+        if (!debugFile.is_open()) {
+            cerr << "Failed to open debug file." << endl;
+        }
     }
 
 };
@@ -130,7 +152,7 @@ void GameInstance::playBaseGame(int numSpins) {
     vector<double> baseVector;
   
     double temp_pay, multiplier;
-    vector<double> temp_pays;
+    vector<double> temp_pays, freePays;
 
     for (int i = 0; i < numSpins; ++i) {
         addMult = true;
@@ -140,10 +162,19 @@ void GameInstance::playBaseGame(int numSpins) {
         if (getRand("R-WTS", reelWeights[0] + reelWeights[1]) < reelWeights[0]) {
             baseReelSet = baseReelsLow;
             tumbleReelSet = tumbleReelsLow;
+         
         }
         else {
             baseReelSet = baseReelsHigh;
-            tumbleReelSet = tumbleReelsHigh;
+            tumbleReelSet = tumbleReelsLow;
+     
+        }
+
+        if (getRand("FR-WTS", reelWeightsFree[0] + reelWeightsFree[1]) < reelWeightsFree[0]) {         
+            freeReelSet = freeLow;
+        }
+        else {
+            freeReelSet = freeHigh;
         }
       /*  baseReelSet = baseReelsLow;
     	tumbleReelSet = tumbleReelsLow;*/
@@ -162,40 +193,46 @@ void GameInstance::playBaseGame(int numSpins) {
         RandomLogGenerator::addScreen(screen.toJson());
 
 
-        baseVector = handleCascades(screen, baseReelSet, tumbleReelSet, true);
+        baseVector = handleCascades(screen, baseReelSet, tumbleReelSet, true, true);
 
         pays[0] = baseVector[0];
         pays[1] = baseVector[1];
 
-        //If 3 FG symbols appear, trigger wild win
+        //If 3 FG symbols appear, trigger a ladder
         int fgCount = screen.countSymbolOnScreen("F1", false);
         if (fgCount == 3) {
-            gameStats.activateBonusGame();
+            gameStats.activateBonusGame(4,true);
             int x = wheelActivation.getRandomPrize();
+            gameStats.activateBonusGame(x, true);
             if (x == 0 ) {
-                gameStats.activateWW();
+               // gameStats.activateWW();
                 multiplier = wildWinMult.getRandomPrize();
                 temp_pay = multiplier * wildWin(screen);
                 pays[2] += temp_pay;
             }
             else if (x == 1) {
-				gameStats.activateEW();
+				//gameStats.activateEW();
                 multiplier = expWinMult.getRandomPrize();
 				temp_pays = expandedWin();
 				pays[3] += multiplier * temp_pays[0];
                 pays[3] += multiplier * temp_pays[1];
             }
             else if (x == 2) {
-				gameStats.activateFG();
-                int numFreeGames = fgPrizeDist.getRandomPrize();
-				temp_pays = playFreeGames(numFreeGames);
-                // sum temp_pays
-                double free_pay = std::accumulate(temp_pays.begin(), temp_pays.end(), 0.0);
+			//	gameStats.activateFG();
+                std::pair<int, int> numFreeGames = fgPrizeDist.getRandomPrize();
+                freePays = playFreeGames(numFreeGames.first, numFreeGames.second);
+                // sum freePays
+                double free_pay = std::accumulate(freePays.begin(), freePays.end(), 0.0);
 				pays[4] += free_pay;
+                pays[7] += freePays[0];
+                pays[8] += freePays[1];
+                pays[9] += freePays[2];
+                pays[10] += freePays[3];
+                pays[11] += freePays[4];
 			
 			}
             else if (x == 3) {
-                gameStats.activateJP();
+               // gameStats.activateJP();
                 double prize = directPrize.getRandomPrize();
                 if (prize == 0) {
                     prize = jackpotPrize.getRandomPrize();
@@ -209,35 +246,42 @@ void GameInstance::playBaseGame(int numSpins) {
 
         RandomLogGenerator::endRound();
         RandomLogGenerator::resetRoundEndFlag();
-        pays[pays.size() - 1] = std::accumulate(pays.begin(), pays.end() - 1, 0.0);
-
+       // pays[pays.size() - 1] = std::accumulate(pays.begin(), pays.end() - 1, 0.0);
+        pays[6] = std::accumulate(pays.begin(), pays.end() - 5, 0.0);
        
         gameStats.completeWager(pays);
     }
 
 }
 
-vector<double> GameInstance::handleCascades(Screen& screen, const ReelSet& reelSet, const ReelSet& offScreenReelSet, bool useDifferentReelSet = false) {
+vector<double> GameInstance::handleCascades(Screen& screen, const ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame) {
     bool hasNewWins;
     double initialWin = 0, tumbleWin = 0;
    int tumbleCount = 0;
 
     std::vector<int> nextIndices(numReels, 0);
     // Initialize nextIndex for each reel
-    for (int reel = 0; reel < numReels; ++reel) {
+    /*for (int reel = 0; reel < numReels; ++reel) {
         nextIndices[reel] = reelSet.reels[reel].symbols.size() - 1;
+    }*/
+    for (int reel = 0; reel < numReels; ++reel) {
+        nextIndices[reel] = (useDifferentReelSet ? offScreenReelSet : reelSet).reels[reel].symbols.size() - 1;
     }
-    
+
+    // If we're using a different reel set, spin it once before cascading
+    if (useDifferentReelSet) {
+        offScreenReelSet.spinReels(); //removed const to make work
+    }
 
     do {
         hasNewWins = false;
         screen.clearMarkedPositions(); // Clear previous positions
 
         if (tumbleCount == 0) {
-			initialWin = calculateWaysWins(screen, true); 
+			initialWin = calculateWaysWins(screen, baseGame);
 		}
         else {
-			tumbleWin += calculateWaysWins(screen, true); 
+			tumbleWin += calculateWaysWins(screen, baseGame);
 		}
         
 
@@ -250,7 +294,7 @@ vector<double> GameInstance::handleCascades(Screen& screen, const ReelSet& reelS
         }
     } while (hasNewWins);
 
-    if (initialWin) {
+    if (initialWin && baseGame) {
         gameStats.recordTumbleFrequency(tumbleCount);
     }
 
@@ -288,41 +332,47 @@ double GameInstance::calculateWaysWins(Screen& screen, bool baseGame) {
 }
 
 double GameInstance::wildWin(Screen screen) {
+    bool baseGame = false;
     vector<double> pay;
     //Mark all F1 symbols on the screen
-    screen.markSymbol("F1", numReels);
-   // screen.display(true);
-    
+    screen.markSymbol("F1", numReels, true);
+   
+   /* if (screen.countSymbolOnScreen("F1", false) > 3) {
+        screen.display(true);
+        bool x = baseGame;
+	}*/
+
     wildWinsReels.spinReels();
     screen.generateScreen(wildWinsReels); // create new reelset
     screen.fillMarkedSymbols("WL");
    // screen.display(true);
     screen.clearMarkedPositions();
-    pay = handleCascades(screen, wildWinsReels, tumbleReelSet, true);
+    pay = handleCascades(screen, wildWinsReels, tumbleReelSet, true, baseGame);
     return pay[0] + pay[1];
    // return calculateWaysWins(screen, true);
 }
 
 vector<double> GameInstance::expandedWin() {
+    bool baseGame = false;
     Screen bigScreen(numReels, numRows + 2);
     vector<double> pay;
    
     do {
         expandedReels.spinReels();
         bigScreen.generateScreen(expandedReels);
-        pay = handleCascades(bigScreen, expandedReels, expandedReels, true);
+        pay = handleCascades(bigScreen, expandedReels, expandedReels, true, baseGame);
     } while (pay[0] == 0);
 
     return pay;
     // return calculateWaysWins(screen, true);
 }
 
-vector<double> GameInstance::playFreeGames(int numFreeGames) {
+vector<double> GameInstance::playFreeGames(int numFreeGames, int numPremiumSpins) {
     vector<double> pays(5, 0); // {baseWin, tumbleWin, wildWin, expandedWin, freeGamesWon}
     vector<double> tempPays;
     double tempPay, multiplier;
 
-    int numPremiumSpins = 2;
+    //numPremiumSpins = 2;
     vector<int> premiumSpins = getRandomPositions("PremChoices", numFreeGames, numPremiumSpins);
     std::sort(premiumSpins.begin(), premiumSpins.end());
 
@@ -346,34 +396,39 @@ vector<double> GameInstance::playFreeGames(int numFreeGames) {
         // Add the screen to the log
         RandomLogGenerator::addScreen(screen.toJson());
 
-        tempPays = handleCascades(screen, freeReelSet, tumbleReelSet, true);
+        tempPays = handleCascades(screen, freeReelSet, tumbleFree, true, false);
         pays[0] += tempPays[0]; // baseWin
         pays[1] += tempPays[1]; // tumbleWin
 
         // Check for free game symbols and trigger additional features
         int fgCount = screen.countSymbolOnScreen("F1", false);
         if (fgCount == 3) {
+            gameStats.activateBonusGame(4, false);
             int x = freeActivation.getRandomPrize();
+            gameStats.activateBonusGame(x, false);
             if (x == 0) {
-                multiplier = wildWinMult.getRandomPrize();
+                multiplier = wildWinMultFree.getRandomPrize();
                 tempPay = wildWin(screen);
                 pays[2] += multiplier * tempPay; // wildWin
             }
             else if (x == 1) {
-                multiplier = expWinMult.getRandomPrize();
+                multiplier = expWinMultFree.getRandomPrize();
                 tempPays = expandedWin();
                 pays[3] += multiplier * tempPays[0]; // expandedWin
                 pays[3] += multiplier * tempPays[1]; // expandedWin
             }
-            else if (x == 2) {
-                numFreeGames += 10; // Track additional free games
+            else if (x == 2) {                
+                //std::pair<int, int> extraGames = fgPrizeDist.getRandomPrize();
+                //numFreeGames += extraGames.first; // Track additional free games
+                numFreeGames += fgPrizeDistFree.getRandomPrize();
             }
             else if (x == 3) {
-                double prize = directPrize.getRandomPrize();
+                double prize = directPrizeFree.getRandomPrize();
                 if (prize == 0) {
-                    prize = jackpotPrize.getRandomPrize();
+                    prize = jackpotPrizeFree.getRandomPrize();
                 }
-                pays[4] = prize;
+                pays[4] += prize;
+               // debugFile  << prize << endl;
             }
         }
 
@@ -417,21 +472,29 @@ void outputData(std::ofstream& file, Stats gameStats) {
     for (size_t i = 0; i < gameStats.payHeaders.size(); ++i) {
         double rtp = gameStats.payVector[i] / (gameStats.numIterations * gameStats.cost);
         double stDev = gameStats.standardDeviations[i];
-        file << gameStats.payHeaders[i] << '\t' << std::setprecision(4) << rtp << '\t' << std::setprecision(4) << stDev << '\n';
+        file << gameStats.payHeaders[i] << '\t' << std::setprecision(6) << rtp << '\t' << std::setprecision(4) << stDev << '\n';
     }
     file << "----------------------------------------\n";
 
     // Output the total pay
-    file << "Iterations: " << gameStats.numIterations << '\n';
-    file << "Total Pay: " << gameStats.payVector[3] << '\n';
+    file << "Iterations\t" << gameStats.numIterations << '\n';
+    file << "Total Pay\t" << gameStats.payVector[3] << '\n';
 
     file << "Feature\tHits\tHit Rate\n";
     file << "Base Game\t" << gameStats.baseGameHits << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.baseGameHits << '\n';
-    file << "Bonus Game\t" << gameStats.bonusGameActivated << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusGameActivated << '\n';
-    file << "Wild Win\t" << gameStats.wwActivated << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.wwActivated << '\n';
-    file << "Expanded Win\t" << gameStats.ewActivated << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.ewActivated << '\n';
-    file << "Free Game\t" << gameStats.fgActivated << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.fgActivated << '\n';
-    file << "JackPot\t" << gameStats.jpActivated << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.jpActivated << '\n';
+    file << "Bonus Game\t" << gameStats.bonusActivationsBase[4] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsBase[4] << '\n';
+    file << "Wild Win\t" << gameStats.bonusActivationsBase[0] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsBase[0] << '\n';
+    file << "Expanded Win\t" << gameStats.bonusActivationsBase[1] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsBase[1] << '\n';
+    file << "Free Game\t" << gameStats.bonusActivationsBase[2] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsBase[2] << '\n';
+    file << "JackPot\t" << gameStats.bonusActivationsBase[3] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsBase[3] << '\n';
+
+    file << "----------------------------------------\n";
+
+    file << "Bonus Game\t" << gameStats.bonusActivationsFree[4] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsFree[4] << '\n';
+    file << "Wild Win\t" << gameStats.bonusActivationsFree[0] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsFree[0] << '\n';
+    file << "Expanded Win\t" << gameStats.bonusActivationsFree[1] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsFree[1] << '\n';
+    file << "Free Game\t" << gameStats.bonusActivationsFree[2] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsFree[2] << '\n';
+    file << "JackPot\t" << gameStats.bonusActivationsFree[3] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsFree[3] << '\n';
 
     file << "----------------------------------------\n";
 
@@ -552,7 +615,7 @@ int main() {
     timer.start(); 
 
     GameConfig gameConfig("config.json");
-    int numberOfSpins = 100000000; //logging: 1000000 
+    int numberOfSpins = 1000000000; //logging: 1000000 
     
     std::string outputFileBase = gameConfig.gameName + "_RTP" + gameConfig.RTP + "_" + gameConfig.gameMode;
     std::string outputFileName = outputFileBase + "_output.txt";
@@ -605,9 +668,9 @@ int main() {
         aggregatedStats.calculateStandardDeviations();
     }
     else if (simulationMode == PLAYER_MODE) {
-        int N = 100000; // Number of players
-        int X = 3000; // Starting credits (enough for 100 spins)
-        int Y = 6000; // Target credits (enough for 200 spins)
+        int N = 10000; // Number of players 100000
+        int X = 2000; // Starting credits (enough for 100 spins)
+        int Y = 4000; // Target credits (enough for 200 spins)
         int successfulPlayers = 0;
 
         for (int i = 0; i < N; ++i) {

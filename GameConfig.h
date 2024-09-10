@@ -80,7 +80,8 @@ private:
     }
 
     // Get PrizeDistribution object from config
-    PrizeDistribution parsePrizeDistribution(const std::string& prizeDistName, std::string subLevel = "") { //subLevel = "level1/level2/level3"
+    template <typename PrizeType>
+    PrizeDistribution<PrizeType> parsePrizeDistribution(const std::string& prizeDistName, std::string subLevel = "") {
         // Get the reference to the config JSON node, starting from the root
         json prizeDistConfig = this->config;
 
@@ -95,7 +96,7 @@ private:
         prizeDistConfig = prizeDistConfig[prizeDistName];
 
         std::string mask = prizeDistConfig["mask"];
-        std::vector<int> prizes = prizeDistConfig["prizes"].get<std::vector<int>>();
+        std::vector<PrizeType> prizes = prizeDistConfig["prizes"].get<std::vector<PrizeType>>();
         // Check if weights exist, default to 1s if not
         std::vector<int> weights;
         if (prizeDistConfig.contains("weights")) {
@@ -104,20 +105,21 @@ private:
         else {
             weights = std::vector<int>(prizes.size(), 1); // Default weights to 1 for each prize
         }
-        return PrizeDistribution(mask, prizes, weights);
+        return PrizeDistribution<PrizeType>(mask, prizes, weights);
     }
     
 
     // Get vector of PrizeDistribution objects from config
-    std::vector<PrizeDistribution> parsePDVec(const std::string& prizeDistName) {
-		std::vector<PrizeDistribution> prizeDists;
+    template <typename PrizeType>
+    std::vector<PrizeDistribution<PrizeType>> parsePDVec(const std::string& prizeDistName) {
+        std::vector<PrizeDistribution<PrizeType>> prizeDists;
         json& prizeDistConfig = this->config[prizeDistName];
         for (auto& item : prizeDistConfig.items()) {
-			std::string key = item.key();
-			prizeDists.push_back(parsePrizeDistribution(key, prizeDistName));
-		}
-		return prizeDists;
-	}
+            std::string key = item.key();
+            prizeDists.push_back(parsePrizeDistribution<PrizeType>(key, prizeDistName));
+        }
+        return prizeDists;
+    }
 
   
     // Get variable of any type from config
@@ -164,7 +166,9 @@ public:
         baseReelsHigh = parseReelSet("baseHigh");
         tumbleReelsHigh = parseReelSet("tumbleHigh");
         tumbleReelsLow = parseReelSet("tumbleLow");
-        freeReels = parseReelSet("freeGame");
+        tumbleFree = parseReelSet("tumbleFree");
+        freeHigh = parseReelSet("freeHigh");
+        freeLow = parseReelSet("freeLow");
         wildWinsReels = parseReelSet("wildWins");
         expandedReels = parseReelSet("expandedReels");
         premiumReels = parseReelSet("premiumReels");
@@ -173,14 +177,20 @@ public:
         numReels = parseVar<int>("reels");
         numRows = parseVar<int>("rows");
         cost = parseVar<int>("cost");
-        wheelActivation = parsePrizeDistribution("wheelActivation");
-        freeActivation = parsePrizeDistribution("wheelActivationFree");
-        fgPrizeDist = parsePrizeDistribution("fgPrizeDist");
-        wildWinMult = parsePrizeDistribution("wildWinMult");
-        expWinMult = parsePrizeDistribution("expWinMult");
-        directPrize = parsePrizeDistribution("directPrize");
-        jackpotPrize = parsePrizeDistribution("jackpotPrize");
+        wheelActivation = parsePrizeDistribution<int>("wheelActivation");
+        freeActivation = parsePrizeDistribution<int>("wheelActivationFree");
+        fgPrizeDist = parsePrizeDistribution<std::pair<int, int>>("fgPrizeDist");
+        fgPrizeDistFree = parsePrizeDistribution<int>("fgPrizeDistFree");
+        wildWinMult = parsePrizeDistribution<int>("wildWinMult");
+        wildWinMultFree = parsePrizeDistribution<int>("wildWinMultFree");
+        expWinMult = parsePrizeDistribution<int>("expWinMult");
+        expWinMultFree = parsePrizeDistribution<int>("expWinMultFree");
+        directPrize = parsePrizeDistribution<int>("directPrize");
+        directPrizeFree = parsePrizeDistribution<int>("directPrizeFree");
+        jackpotPrize = parsePrizeDistribution<int>("jackpotPrize");
+        jackpotPrizeFree = parsePrizeDistribution<int>("jackpotPrizeFree");
         reelWeights = parseVec<int>("reelWeights", RTP); //change for different RTPs
+        reelWeightsFree = parseVec<int>("reelWeightsFree", RTP); //change for different RTPs
         symbolList = symbolStructure.getSymbols();
         paytable = symbolStructure.getPaytable();
 	}
@@ -193,11 +203,12 @@ public:
     int numReels;
     int numRows;
     int cost; //maybe double
-    ReelSet baseReelsLow, baseReelsHigh, tumbleReelsLow, tumbleReelsHigh, wildWinsReels, expandedReels, freeReels, premiumReels;
-    std::vector<int> reelWeights;
+    ReelSet baseReelsLow, baseReelsHigh, tumbleReelsLow, tumbleReelsHigh,tumbleFree, wildWinsReels, expandedReels, freeHigh, freeLow, premiumReels;
+    std::vector<int> reelWeights, reelWeightsFree;
     SymbolStructure symbolStructure;
     std::vector<std::string> payHeaders;
-    PrizeDistribution wheelActivation, freeActivation, fgPrizeDist, wildWinMult, expWinMult, directPrize, jackpotPrize;
+    PrizeDistribution<int> wheelActivation, freeActivation,  wildWinMult, wildWinMultFree, expWinMult, expWinMultFree, fgPrizeDistFree, directPrize,directPrizeFree, jackpotPrize, jackpotPrizeFree;
+    PrizeDistribution<std::pair<int, int>> fgPrizeDist;
     std::vector<std::string> symbolList;
     std::map<std::string, std::vector<int>> paytable;
 
