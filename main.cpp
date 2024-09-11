@@ -42,7 +42,7 @@ enum SimulationMode {
     PLAYER_MODE
 };
 
-LogMode logMode = NO_LOGGING; // NO_LOGGING, LOGGING, REPLAY
+LogMode logMode = REPLAY; // NO_LOGGING, LOGGING, REPLAY
 SimulationMode simulationMode = RANDOM_MODE;
 
 
@@ -190,7 +190,7 @@ void GameInstance::playBaseGame(int numSpins) {
       //  screen.display();
 
           // Add the screen to the log
-        RandomLogGenerator::addScreen(screen.toJson());
+       // RandomLogGenerator::addScreen(screen.toJson());
 
 
         baseVector = handleCascades(screen, baseReelSet, tumbleReelSet, true, true);
@@ -237,6 +237,8 @@ void GameInstance::playBaseGame(int numSpins) {
                 if (prize == 0) {
                     prize = jackpotPrize.getRandomPrize();
                 }
+                RandomLogGenerator::addScreen(screen.toJson());
+                RandomLogGenerator::addWinAmount(prize);
 				pays[5] = prize;
 			}
             
@@ -305,6 +307,8 @@ double GameInstance::calculateWaysWins(Screen& screen, bool baseGame) {
     double totalPay = 0;
     int multiplier = 1;
 
+
+   // RandomLogGenerator::addScreen(screen.toJson());
     // Clear previous marked positions
     screen.clearMarkedPositions();
 
@@ -360,7 +364,7 @@ vector<double> GameInstance::expandedWin() {
     do {
         expandedReels.spinReels();
         bigScreen.generateScreen(expandedReels);
-        pay = handleCascades(bigScreen, expandedReels, expandedReels, true, baseGame);
+        pay = handleCascades(bigScreen, expandedReels, expandedReels, false, baseGame);
     } while (pay[0] == 0);
 
     return pay;
@@ -385,7 +389,7 @@ vector<double> GameInstance::playFreeGames(int numFreeGames, int numPremiumSpins
     while (currentFreeGame < numFreeGames) {
         if (premiumIndex < premiumSpins.size() && currentFreeGame == premiumSpins[premiumIndex]) {
             premiumReels.spinReels();
-            screen.generateScreen(premiumReels);
+            screen.generateScreen(premiumReels);            
             premiumIndex++;
         }
         else {
@@ -427,6 +431,8 @@ vector<double> GameInstance::playFreeGames(int numFreeGames, int numPremiumSpins
                 if (prize == 0) {
                     prize = jackpotPrizeFree.getRandomPrize();
                 }
+                RandomLogGenerator::addWinAmount(prize);
+                RandomLogGenerator::addScreen(screen.toJson());
                 pays[4] += prize;
                // debugFile  << prize << endl;
             }
@@ -615,7 +621,7 @@ int main() {
     timer.start(); 
 
     GameConfig gameConfig("config.json");
-    int numberOfSpins = 1000000000; //logging: 1000000 
+    int numberOfSpins = 100000; //logging: 1000000 
     
     std::string outputFileBase = gameConfig.gameName + "_RTP" + gameConfig.RTP + "_" + gameConfig.gameMode;
     std::string outputFileName = outputFileBase + "_output.txt";
@@ -649,7 +655,7 @@ int main() {
    
     if (simulationMode == RANDOM_MODE) { // Simulate number of spins
         
-        int numThreads = 25;
+        int numThreads = 1;
         std::vector<std::future<Stats>> futures;
 
         for (int i = 0; i < numThreads; ++i) {
