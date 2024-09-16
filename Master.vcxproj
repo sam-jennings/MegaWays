@@ -136,7 +136,6 @@
     <ClInclude Include="RandomLogGenerator.h" />
     <ClInclude Include="RandomUtils.h" />
     <ClInclude Include="Screen.h" />
-    <ClInclude Include="SpinTracker.h" />
     <ClInclude Include="Stats.h" />
     <ClInclude Include="Symbols.h" />
   </ItemGroup>

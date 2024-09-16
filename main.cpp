@@ -7,7 +7,6 @@
 #include <random>
 #include <iomanip> // For std::setw and std::left
 #include "Stats.h" 
-#include "SpinTracker.h"
 #include "Screen.h" 
 
 using namespace std;
@@ -85,20 +84,15 @@ public:
 
 
     void playBaseGame(int numSpins);
-   // void playFullCycle();
+
     double calculateWaysWins(Screen& screen, bool baseGame);
    
     vector<double> handleCascades(Screen& screen, const ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame);
 
-    double wildWin(Screen screen);
-    vector<double> expandedWin();
     vector<double> playFreeGames(int numFreeGames, int numPremiumSpins);
 
 private:
     GameConfig config; // Configuration for this game instance
-
-
-
 
     // Private methods for internal game mechanics
     void initializeGame() {
@@ -144,9 +138,6 @@ private:
 };
 
 
-
-
-
 void GameInstance::playBaseGame(int numSpins) {
     bool addMult;
     vector<double> baseVector;
@@ -156,7 +147,6 @@ void GameInstance::playBaseGame(int numSpins) {
 
     for (int i = 0; i < numSpins; ++i) {
         RandomLogGenerator::startRound();
-        RandomLogGenerator::startSpin();
         addMult = true;
         vector<double> pays(payHeaders.size(), 0); // {base_pay, free_pay, scatter_pay, total_pay}
 
@@ -189,10 +179,7 @@ void GameInstance::playBaseGame(int numSpins) {
         baseReelSet.spinReels();
         screen.generateScreen(baseReelSet);
 
-      //  screen.display();
-
-          // Add the screen to the log
-       // RandomLogGenerator::addScreen(screen.toJson());
+      
 
 
         baseVector = handleCascades(screen, baseReelSet, tumbleReelSet, true, true);
@@ -204,56 +191,13 @@ void GameInstance::playBaseGame(int numSpins) {
         //If 3 FG symbols appear, trigger a ladder
         int fgCount = screen.countSymbolOnScreen("F1", false);
         if (fgCount == 3) {
-            gameStats.activateBonusGame(4,true);
-            int x = wheelActivation.getRandomPrize();
-            gameStats.activateBonusGame(x, true);
-            if (x == 0 ) {
-               // gameStats.activateWW();
-                multiplier = wildWinMult.getRandomPrize();
-                temp_pay = multiplier * wildWin(screen);
-                RandomLogGenerator::addWinAmount(temp_pay);
-                pays[2] += temp_pay;
-            }
-            else if (x == 1) {
-				//gameStats.activateEW();
-                multiplier = expWinMult.getRandomPrize();
-				temp_pays = expandedWin();
-                temp_pay = multiplier * (temp_pays[0] + temp_pays[1]);
-                pays[3] += temp_pay;
-                RandomLogGenerator::addWinAmount(temp_pay);
-            }
-            else if (x == 2) {
-			//	gameStats.activateFG();
-                std::pair<int, int> numFreeGames = fgPrizeDist.getRandomPrize();
-                freePays = playFreeGames(numFreeGames.first, numFreeGames.second);
-                // sum freePays
-                double free_pay = std::accumulate(freePays.begin(), freePays.end(), 0.0);               
-				pays[4] += free_pay;
-                pays[7] += freePays[0];
-                pays[8] += freePays[1];
-                pays[9] += freePays[2];
-                pays[10] += freePays[3];
-                pays[11] += freePays[4];
-			
-			}
-            else if (x == 3) {
-               // gameStats.activateJP();
-                double prize = directPrize.getRandomPrize();
-                if (prize == 0) {
-                    prize = jackpotPrize.getRandomPrize();
-                }
-                //RandomLogGenerator::addScreen(screen.toJson());
-                RandomLogGenerator::addWinAmount(prize);
-				pays[5] = prize;
-			}
-            
+            gameStats.activateBonusGame(4,true);          
 			
 		}
   
-        RandomLogGenerator::endSpin();
         RandomLogGenerator::endRound();
-       // pays[pays.size() - 1] = std::accumulate(pays.begin(), pays.end() - 1, 0.0);
-        pays[6] = std::accumulate(pays.begin(), pays.end() - 5, 0.0);
+        pays[pays.size() - 1] = std::accumulate(pays.begin(), pays.end() - 1, 0.0);
+       // pays[6] = std::accumulate(pays.begin(), pays.end() - 5, 0.0);
        
         gameStats.completeWager(pays);
     }
@@ -338,52 +282,13 @@ double GameInstance::calculateWaysWins(Screen& screen, bool baseGame) {
     return totalPay;
 }
 
-double GameInstance::wildWin(Screen screen) {
-    bool baseGame = false;
-    vector<double> pay;
-    //Mark all F1 symbols on the screen
-    screen.markSymbol("F1", numReels, true);
-   
-   /* if (screen.countSymbolOnScreen("F1", false) > 3) {
-        screen.display(true);
-        bool x = baseGame;
-	}*/
-    RandomLogGenerator::endSpin();
-    RandomLogGenerator::startSpin();
-
-    wildWinsReels.spinReels();
-    screen.generateScreen(wildWinsReels); // create new reelset
-    screen.fillMarkedSymbols("WL");
-   // screen.display(true);
-    screen.clearMarkedPositions();
-    pay = handleCascades(screen, wildWinsReels, tumbleReelSet, true, baseGame);
-    return pay[0] + pay[1];
-   // return calculateWaysWins(screen, true);
-}
-
-vector<double> GameInstance::expandedWin() {
-    bool baseGame = false;
-    Screen bigScreen(numReels, numRows + 2);
-    vector<double> pay;
-   
-    do {
-        RandomLogGenerator::endSpin();
-        RandomLogGenerator::startSpin();
-        expandedReels.spinReels();
-        bigScreen.generateScreen(expandedReels);
-        pay = handleCascades(bigScreen, expandedReels, expandedReels, false, baseGame);
-    } while (pay[0] == 0);
-
-    return pay;
-    // return calculateWaysWins(screen, true);
-}
 
 vector<double> GameInstance::playFreeGames(int numFreeGames, int numPremiumSpins) {
     vector<double> pays(5, 0); // {baseWin, tumbleWin, wildWin, expandedWin, freeGamesWon}
     vector<double> tempPays;
     double tempPay, multiplier;
 
-    //numPremiumSpins = 2;
+   
     vector<int> premiumSpins = getRandomPositions("PremChoices", numFreeGames, numPremiumSpins);
     std::sort(premiumSpins.begin(), premiumSpins.end());
 
@@ -394,8 +299,7 @@ vector<double> GameInstance::playFreeGames(int numFreeGames, int numPremiumSpins
     int currentFreeGame = 0;
 
     while (currentFreeGame < numFreeGames) {
-        RandomLogGenerator::endSpin();
-        RandomLogGenerator::startSpin();
+        RandomLogGenerator::newSpin();
 
         if (premiumIndex < premiumSpins.size() && currentFreeGame == premiumSpins[premiumIndex]) {
             premiumReels.spinReels();
@@ -417,37 +321,7 @@ vector<double> GameInstance::playFreeGames(int numFreeGames, int numPremiumSpins
         // Check for free game symbols and trigger additional features
         int fgCount = screen.countSymbolOnScreen("F1", false);
         if (fgCount == 3) {
-            gameStats.activateBonusGame(4, false);
-            int x = freeActivation.getRandomPrize();
-            gameStats.activateBonusGame(x, false);
-            if (x == 0) {
-                multiplier = wildWinMultFree.getRandomPrize();
-                tempPay = multiplier * wildWin(screen);
-                pays[2] +=  tempPay; // wildWin
-                RandomLogGenerator::addWinAmount(tempPay);
-            }
-            else if (x == 1) {
-                multiplier = expWinMultFree.getRandomPrize();
-                tempPays = expandedWin();
-                tempPay = multiplier * (tempPays[0] + tempPays[1]);
-                pays[3] += tempPay;
-                RandomLogGenerator::addWinAmount(tempPay);
-            }
-            else if (x == 2) {                
-                //std::pair<int, int> extraGames = fgPrizeDist.getRandomPrize();
-                //numFreeGames += extraGames.first; // Track additional free games
-                numFreeGames += fgPrizeDistFree.getRandomPrize();
-            }
-            else if (x == 3) {
-                double prize = directPrizeFree.getRandomPrize();
-                if (prize == 0) {
-                    prize = jackpotPrizeFree.getRandomPrize();
-                }
-                RandomLogGenerator::addWinAmount(prize);
-                //RandomLogGenerator::addScreen(screen.toJson());
-                pays[4] += prize;
-               // debugFile  << prize << endl;
-            }
+
         }
 
         currentFreeGame++;

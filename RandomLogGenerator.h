@@ -56,6 +56,7 @@ public:
     static void endRound();                          // Finalize round, log randoms and game details
     static void startSpin();                         // Start logging a new spin
     static bool endSpin();                           // Finalize a spin, log randoms and win amounts, returns false if maxRoundWin is hit
+    static bool newSpin();                           // Start a new spin, return false if maxRoundWin is hit
 
     static void addRandom(const RandTriple& randTriple);  // Add a random to the current spin
     static void addScreen(json screen);              // Log the screen for the current spin
@@ -159,6 +160,8 @@ void RandomLogGenerator::startRound() {
     currentRoundTotalWin = 0.0;
     maxWinTriggered = false;
     currentRound++;
+
+    startSpin();
 }
 
 
@@ -167,6 +170,8 @@ void RandomLogGenerator::startRound() {
 void RandomLogGenerator::endRound() {
     if (logMode != LOGGING) return;
     
+    endSpin();  // Finalize the last spin
+
     // Log the total round win to the random log (cap the win if maxRoundWin is hit)
     double totalWin = maxWinTriggered ? maxRoundWin : currentRoundTotalWin;
     randomLogFile << "#" << std::fixed << std::setprecision(2) << totalWin / 100 << std::endl;
@@ -238,7 +243,11 @@ bool RandomLogGenerator::endSpin() {
     return true;  // Continue the round
 }
 
-
+bool RandomLogGenerator::newSpin() {
+    bool x = endSpin();
+    startSpin();
+    return x;
+}
 
 // Add random result
 void RandomLogGenerator::addRandom(const RandTriple& randTriple) {
