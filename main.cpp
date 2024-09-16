@@ -34,7 +34,7 @@ public:
 };
 
 
-int instructionIndex = 0;
+//int instructionIndex = 0;
 
 enum SimulationMode {
     EXACT_MODE,
@@ -42,7 +42,7 @@ enum SimulationMode {
     PLAYER_MODE
 };
 
-LogMode logMode = REPLAY; // NO_LOGGING, LOGGING, REPLAY
+LogMode logMode = LOGGING; // NO_LOGGING, LOGGING, REPLAY
 SimulationMode simulationMode = RANDOM_MODE;
 
 
@@ -155,6 +155,8 @@ void GameInstance::playBaseGame(int numSpins) {
     vector<double> temp_pays, freePays;
 
     for (int i = 0; i < numSpins; ++i) {
+        RandomLogGenerator::startRound();
+        RandomLogGenerator::startSpin();
         addMult = true;
         vector<double> pays(payHeaders.size(), 0); // {base_pay, free_pay, scatter_pay, total_pay}
 
@@ -194,6 +196,7 @@ void GameInstance::playBaseGame(int numSpins) {
 
 
         baseVector = handleCascades(screen, baseReelSet, tumbleReelSet, true, true);
+        RandomLogGenerator::addWinAmount(baseVector[0] + baseVector[1]);
 
         pays[0] = baseVector[0];
         pays[1] = baseVector[1];
@@ -208,21 +211,23 @@ void GameInstance::playBaseGame(int numSpins) {
                // gameStats.activateWW();
                 multiplier = wildWinMult.getRandomPrize();
                 temp_pay = multiplier * wildWin(screen);
+                RandomLogGenerator::addWinAmount(temp_pay);
                 pays[2] += temp_pay;
             }
             else if (x == 1) {
 				//gameStats.activateEW();
                 multiplier = expWinMult.getRandomPrize();
 				temp_pays = expandedWin();
-				pays[3] += multiplier * temp_pays[0];
-                pays[3] += multiplier * temp_pays[1];
+                temp_pay = multiplier * (temp_pays[0] + temp_pays[1]);
+                pays[3] += temp_pay;
+                RandomLogGenerator::addWinAmount(temp_pay);
             }
             else if (x == 2) {
 			//	gameStats.activateFG();
                 std::pair<int, int> numFreeGames = fgPrizeDist.getRandomPrize();
                 freePays = playFreeGames(numFreeGames.first, numFreeGames.second);
                 // sum freePays
-                double free_pay = std::accumulate(freePays.begin(), freePays.end(), 0.0);
+                double free_pay = std::accumulate(freePays.begin(), freePays.end(), 0.0);               
 				pays[4] += free_pay;
                 pays[7] += freePays[0];
                 pays[8] += freePays[1];
@@ -237,7 +242,7 @@ void GameInstance::playBaseGame(int numSpins) {
                 if (prize == 0) {
                     prize = jackpotPrize.getRandomPrize();
                 }
-                RandomLogGenerator::addScreen(screen.toJson());
+                //RandomLogGenerator::addScreen(screen.toJson());
                 RandomLogGenerator::addWinAmount(prize);
 				pays[5] = prize;
 			}
@@ -245,9 +250,8 @@ void GameInstance::playBaseGame(int numSpins) {
 			
 		}
   
-
+        RandomLogGenerator::endSpin();
         RandomLogGenerator::endRound();
-        RandomLogGenerator::resetRoundEndFlag();
        // pays[pays.size() - 1] = std::accumulate(pays.begin(), pays.end() - 1, 0.0);
         pays[6] = std::accumulate(pays.begin(), pays.end() - 5, 0.0);
        
@@ -308,7 +312,7 @@ double GameInstance::calculateWaysWins(Screen& screen, bool baseGame) {
     int multiplier = 1;
 
 
-   // RandomLogGenerator::addScreen(screen.toJson());
+    RandomLogGenerator::addScreen(screen.toJson());
     // Clear previous marked positions
     screen.clearMarkedPositions();
 
@@ -328,10 +332,9 @@ double GameInstance::calculateWaysWins(Screen& screen, bool baseGame) {
         }
         totalPay += payout;
     }
+     
 
-    
-
-    RandomLogGenerator::addWinAmount(totalPay);
+    //RandomLogGenerator::addWinAmount(totalPay);
     return totalPay;
 }
 
@@ -345,6 +348,8 @@ double GameInstance::wildWin(Screen screen) {
         screen.display(true);
         bool x = baseGame;
 	}*/
+    RandomLogGenerator::endSpin();
+    RandomLogGenerator::startSpin();
 
     wildWinsReels.spinReels();
     screen.generateScreen(wildWinsReels); // create new reelset
@@ -362,6 +367,8 @@ vector<double> GameInstance::expandedWin() {
     vector<double> pay;
    
     do {
+        RandomLogGenerator::endSpin();
+        RandomLogGenerator::startSpin();
         expandedReels.spinReels();
         bigScreen.generateScreen(expandedReels);
         pay = handleCascades(bigScreen, expandedReels, expandedReels, false, baseGame);
@@ -387,6 +394,9 @@ vector<double> GameInstance::playFreeGames(int numFreeGames, int numPremiumSpins
     int currentFreeGame = 0;
 
     while (currentFreeGame < numFreeGames) {
+        RandomLogGenerator::endSpin();
+        RandomLogGenerator::startSpin();
+
         if (premiumIndex < premiumSpins.size() && currentFreeGame == premiumSpins[premiumIndex]) {
             premiumReels.spinReels();
             screen.generateScreen(premiumReels);            
@@ -412,14 +422,16 @@ vector<double> GameInstance::playFreeGames(int numFreeGames, int numPremiumSpins
             gameStats.activateBonusGame(x, false);
             if (x == 0) {
                 multiplier = wildWinMultFree.getRandomPrize();
-                tempPay = wildWin(screen);
-                pays[2] += multiplier * tempPay; // wildWin
+                tempPay = multiplier * wildWin(screen);
+                pays[2] +=  tempPay; // wildWin
+                RandomLogGenerator::addWinAmount(tempPay);
             }
             else if (x == 1) {
                 multiplier = expWinMultFree.getRandomPrize();
                 tempPays = expandedWin();
-                pays[3] += multiplier * tempPays[0]; // expandedWin
-                pays[3] += multiplier * tempPays[1]; // expandedWin
+                tempPay = multiplier * (tempPays[0] + tempPays[1]);
+                pays[3] += tempPay;
+                RandomLogGenerator::addWinAmount(tempPay);
             }
             else if (x == 2) {                
                 //std::pair<int, int> extraGames = fgPrizeDist.getRandomPrize();
@@ -432,7 +444,7 @@ vector<double> GameInstance::playFreeGames(int numFreeGames, int numPremiumSpins
                     prize = jackpotPrizeFree.getRandomPrize();
                 }
                 RandomLogGenerator::addWinAmount(prize);
-                RandomLogGenerator::addScreen(screen.toJson());
+                //RandomLogGenerator::addScreen(screen.toJson());
                 pays[4] += prize;
                // debugFile  << prize << endl;
             }
@@ -621,7 +633,7 @@ int main() {
     timer.start(); 
 
     GameConfig gameConfig("config.json");
-    int numberOfSpins = 100000; //logging: 1000000 
+    int numberOfSpins = 100000; //logging: 100000 
     
     std::string outputFileBase = gameConfig.gameName + "_RTP" + gameConfig.RTP + "_" + gameConfig.gameMode;
     std::string outputFileName = outputFileBase + "_output.txt";
@@ -642,11 +654,13 @@ int main() {
         cerr << "Failed to open output file." << endl; //good to check before running simulation
     }
 
-    RandomLogGenerator::setLogFile(randomLogFileName);
-    RandomLogGenerator::setGameDetailsFile(gameDetailsFileName);
+    // Call handleLoggingMode to initialize the logging mode, whether LOGGING, REPLAY, or NO_LOGGING
+    bool loggingInitialized = RandomLogGenerator::handleLoggingMode(logMode, randomLogFileName, gameDetailsFileName);
 
-    // Check the mode and act accordingly.
-    RandomLogGenerator::handleLoggingMode(logMode);
+    if (!loggingInitialized && logMode != NO_LOGGING) {
+        cerr << "Error initializing logging or replay mode!" << endl;
+        return 1;  // Exit if there was an error initializing logging or replay mode
+    }
 
 
 
@@ -711,7 +725,7 @@ int main() {
     outputFile << "Elapsed time: " << elapsed_time << " seconds" << endl;
     outputFile.close();
 
-    RandomLogGenerator::closeLog();
+    RandomLogGenerator::closeLogs();
 
     return 0;
 }

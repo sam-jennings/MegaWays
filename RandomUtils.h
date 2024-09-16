@@ -35,7 +35,7 @@ inline int getRand(const std::string& mask, int range) {
         index = dis(gen);
         if (logMode == 1) {
             RandTriple randTriple = { mask, index, range };
-            RandomLogGenerator::addLog(randTriple);
+            RandomLogGenerator::addRandom(randTriple);
         }
     }
     return index;

@@ -26,217 +26,253 @@ enum LogMode {
 };
 
 extern LogMode logMode;
+extern int instructionIndex;  // Index for replaying randoms
 
 class RandomLogGenerator {
 public:
-    static std::ofstream logFile;
+    // File streams for logging
+    static std::ofstream randomLogFile;
     static std::ofstream gameDetailsFile;
-    static int currentRound;
-    static std::vector<std::vector<std::string>> spinsData;
-    static std::vector<json> roundScreens;
-    static bool newSpin;
-    static bool loggingEnabled;
-    
-    static std::vector<double> roundWins;
-    static std::vector<RandTriple> randomLogInstructions;
-    static double maxRoundWin;
-    
 
-    static void openLog();
-    static void closeLog();
-    static void addLog(const RandTriple& randTriple);
-    static void addWinAmount(int winAmount);
-    static void endRound(bool maxWinTriggered);
-    static void enableLogging();
-    static void disableLogging();
-    static void addScreen(json screen);
+    // Game-related state
+    static int currentRound;
+    static std::vector<std::string> currentRandoms;  // Stores randoms for a spin
+    static double currentSpinTotalWin;               // Stores total win for a spin
+    static double currentRoundTotalWin;              // Stores total win for the round
+    static double maxRoundWin;                       // Max win for a round
+    static bool maxWinTriggered;                     // Flag to indicate if max win was triggered
+    static std::vector<json> roundScreens;
+    static std::vector<std::vector<int>> roundMultipliers;
+    static std::vector<std::vector<double>> roundWheelBonusPrizes;  // Add this to store wheel bonus prizes for each spin
+
+    // static bool loggingEnabled;
+
+     // For replay mode
+    static std::vector<RandTriple> randomLogInstructions;
+
+    // Method declarations
+    static void setMaxRoundWin(double maxWin);       // Set the maximum round win
+    static void startRound();                        // Prepare for a new round
+    static void endRound();                          // Finalize round, log randoms and game details
+    static void startSpin();                         // Start logging a new spin
+    static bool endSpin();                           // Finalize a spin, log randoms and win amounts, returns false if maxRoundWin is hit
+
+    static void addRandom(const RandTriple& randTriple);  // Add a random to the current spin
+    static void addScreen(json screen);              // Log the screen for the current spin
+    static void addWinAmount(double winAmount);      // Add a win to the current spin
+
+    static void openLogs(const std::string& randomLogFileName, const std::string& gameDetailsFileName);
+    static void closeLogs();
+
+
+    static void addMultipliers(std::vector<int>& multipliersUsed);
+    static void addWheelBonusPrizes(std::vector<double>& wheelBonusPrizes);
+
+    // Replay-related methods
     static void readAndParseLog(const std::string& filename);
     static std::vector<RandTriple> getRandomLogInstructions();
-    static void setLogFile(const std::string& filename);
-    static void setGameDetailsFile(const std::string& filename);
-    static void resetRoundEndFlag();
-    static void handleLoggingMode(LogMode mode);
+
+
+    static bool handleLoggingMode(LogMode mode, const std::string& randomLogFileName, const std::string& gameDetailsFileName);
+
+
 
 private:
-    static std::string logFileName;
-    static std::string gameDetailsFileName;
     static void parseLogLine(const std::string& line, std::vector<RandTriple>& entries);
-    static bool roundAlreadyEnded;
+
 };
 
 // Method Definitions
-std::string RandomLogGenerator::logFileName;
-std::string RandomLogGenerator::gameDetailsFileName;
-std::ofstream RandomLogGenerator::logFile;
+
+std::ofstream RandomLogGenerator::randomLogFile;
 std::ofstream RandomLogGenerator::gameDetailsFile;
 int RandomLogGenerator::currentRound = 0;
-std::vector<std::vector<std::string>> RandomLogGenerator::spinsData;
+std::vector<std::string> RandomLogGenerator::currentRandoms;
+double RandomLogGenerator::currentSpinTotalWin = 0.0;
+double RandomLogGenerator::currentRoundTotalWin = 0.0;
+double RandomLogGenerator::maxRoundWin = std::numeric_limits<double>::max();  // Default to no max win
+bool RandomLogGenerator::maxWinTriggered = false;
 std::vector<json> RandomLogGenerator::roundScreens;
-bool RandomLogGenerator::newSpin = true;
-bool RandomLogGenerator::loggingEnabled = true;
-std::vector<double> RandomLogGenerator::roundWins(0);
 std::vector<RandTriple> RandomLogGenerator::randomLogInstructions;
-double RandomLogGenerator::maxRoundWin = 300000.0;
-bool RandomLogGenerator::roundAlreadyEnded = false;
+//LogMode logMode;
+int instructionIndex = 0;
+std::vector<std::vector<int>> RandomLogGenerator::roundMultipliers;
+std::vector<std::vector<double>> RandomLogGenerator::roundWheelBonusPrizes;
 
-void RandomLogGenerator::resetRoundEndFlag() {
-	roundAlreadyEnded = false;
+
+
+// Set the maximum win for a round
+void RandomLogGenerator::setMaxRoundWin(double maxWin) {
+    maxRoundWin = maxWin;
 }
-void RandomLogGenerator::openLog() {
-    if (loggingEnabled) {
-        logFile.open(logFileName);
-        if (!logFile.is_open()) {
-            throw std::runtime_error("Failed to open log file: " + logFileName);
-        }
+
+// Open log files
+void RandomLogGenerator::openLogs(const std::string& randomLogFileName, const std::string& gameDetailsFileName) {
+    if (logMode == LOGGING) {
+        randomLogFile.open(randomLogFileName);
         gameDetailsFile.open(gameDetailsFileName);
-        if (!gameDetailsFile.is_open()) {
-            throw std::runtime_error("Failed to open game details file.");
-        }
     }
 }
 
-void RandomLogGenerator::closeLog() {
-    if (loggingEnabled) {
-        logFile.close();
+// Close log files
+void RandomLogGenerator::closeLogs() {
+    if (logMode == LOGGING) {
+        randomLogFile.close();
         gameDetailsFile.close();
     }
 }
 
-void RandomLogGenerator::addLog(const RandTriple& randTriple) {
-    if (loggingEnabled) {
-        if (!newSpin) {
-            logFile << ",";
-        }
-        else {
-            newSpin = false;
-        }
 
-        logFile << randTriple.mask << ":" << randTriple.result << ":" << randTriple.range;
+    // Handle different logging modes and file setup
+bool RandomLogGenerator::handleLoggingMode(LogMode mode, const std::string& randomLogFileName, const std::string& gameDetailsFileName) {
+    logMode = mode;
+    instructionIndex = 0;
+
+    // Handle LOGGING mode
+    if (logMode == LOGGING) {
+        openLogs(randomLogFileName, gameDetailsFileName);
+        return true;
     }
+
+    // Handle REPLAY mode
+    if (logMode == REPLAY) {
+        readAndParseLog(randomLogFileName);  // Read the log file for replay
+        return !randomLogInstructions.empty();
+    }
+
+    // Handle NO_LOGGING mode
+    if (logMode == NO_LOGGING) {
+        return false;  // No logging or replay, just execute normally
+    }
+
+    return false;
 }
 
-void RandomLogGenerator::addWinAmount(int winAmount) {
-    if (loggingEnabled) {
-        double projectedTotal = std::accumulate(roundWins.begin(), roundWins.end(), static_cast<double>(winAmount));
-        if (projectedTotal > maxRoundWin) {
-            // Log the full win amount, even if it exceeds the max limit
-            logFile << "#" << (double)winAmount/100.0 << ";";
 
-            // Force the end of the round with the max win scenario flag set
-            endRound(true);
-        }
-        else {
-            // Add win normally if under the max limit
-            roundWins.push_back(winAmount);
-            logFile << "#" << (double)winAmount / 100.0 << ";";
-        }
-        newSpin = true;
-    }
+// Start a new round
+void RandomLogGenerator::startRound() {
+    currentRandoms.clear();
+    roundScreens.clear();
+    roundMultipliers.clear();
+    roundWheelBonusPrizes.clear();
+    currentSpinTotalWin = 0.0;
+    currentRoundTotalWin = 0.0;
+    maxWinTriggered = false;
+    currentRound++;
 }
 
-void RandomLogGenerator::endRound(bool maxWinTriggered = false) {
-    if (!loggingEnabled) {
-        return;
-    }
 
-    if (!roundAlreadyEnded) {
-        currentRound++;
 
-        double finalWinAmount = maxWinTriggered ? maxRoundWin : std::accumulate(roundWins.begin(), roundWins.end(), 0.0);
-        logFile << "#" << finalWinAmount / 100.0 << "\n";
+// End the round and log randoms and game details
+void RandomLogGenerator::endRound() {
+    if (logMode != LOGGING) return;
+    
+    // Log the total round win to the random log (cap the win if maxRoundWin is hit)
+    double totalWin = maxWinTriggered ? maxRoundWin : currentRoundTotalWin;
+    randomLogFile << "#" << std::fixed << std::setprecision(2) << totalWin / 100 << std::endl;
 
-        gameDetailsFile << "{" << std::endl;
-        for (size_t i = 0; i < roundScreens.size(); ++i) {
-            gameDetailsFile << "  \"spin_" << i << "\": [" << std::endl;
-            for (const auto& row : roundScreens[i]) {
-                gameDetailsFile << "    [";
-                for (size_t j = 0; j < row.size(); ++j) {
-                    gameDetailsFile << row[j];  // Directly write the symbol without additional quotes
-                    if (j < row.size() - 1) gameDetailsFile << ", ";
-                }
-                gameDetailsFile << "]," << std::endl;
+    // Log the game details (screen state) to gameDetails.txt
+    gameDetailsFile << "{" << std::endl;
+    for (size_t i = 0; i < roundScreens.size(); ++i) {
+        gameDetailsFile << "  \"spin_" << i << "\": [" << std::endl;
+       // gameDetailsFile << "  \"Screen" << "\": [" << std::endl;
+        for (size_t rowIdx = 0; rowIdx < roundScreens[i].size(); ++rowIdx) {
+            const auto& row = roundScreens[i][rowIdx];
+            gameDetailsFile << "    [";
+            for (size_t j = 0; j < row.size(); ++j) {
+                gameDetailsFile << row[j];  // Directly write the symbol without additional quotes
+                if (j < row.size() - 1) gameDetailsFile << ", ";
             }
-            gameDetailsFile << "  ]," << std::endl;
+            gameDetailsFile << "]";
+            if (rowIdx < roundScreens[i].size() - 1) {
+                gameDetailsFile << ",";
+            }
+            gameDetailsFile << std::endl;
         }
-        gameDetailsFile << "}" << std::endl;
-        gameDetailsFile << "========== end round: " << currentRound << " ===========" << std::endl;
+        gameDetailsFile << "  ]" ;
+       
 
-        roundScreens.clear();
-        newSpin = true;
+       // gameDetailsFile << "}" << std::endl;
+        if (i < roundScreens.size() - 1) {
+            gameDetailsFile << ",";
+        }
+        gameDetailsFile << std::endl;
     }
-    roundWins.clear();
-    roundAlreadyEnded = true;
-    return;
+
+    gameDetailsFile << "}" << std::endl;
+    gameDetailsFile << "========== end round: " << currentRound << " ===========" << std::endl;
 }
 
-//void RandomLogGenerator::endRound(bool maxWinTriggered = false) {
-//    if (!loggingEnabled) {
-//        return;
-//    }
-//    
-//    if (!roundAlreadyEnded) {
-//        currentRound++;
-//
-//        double finalWinAmount = maxWinTriggered ? maxRoundWin : std::accumulate(roundWins.begin(), roundWins.end(), 0.0);
-//        logFile << "#" << finalWinAmount / 100.0 << "\n";
-//        
-//        json roundData; // JSON object to hold data for all spins
-//
-//        for (size_t i = 0; i < roundScreens.size(); ++i) {
-//            json spinData; // JSON object to hold data for each spin
-//            spinData["spin_" + std::to_string(i)] = roundScreens[i];
-//            roundData.merge_patch(spinData); // Merge spin data into roundData
-//        }
-//
-//        gameDetailsFile << roundData.dump(4) << std::endl; // Output round data
-//        gameDetailsFile << "========== end round: " << currentRound << " ===========" << std::endl;
-//
-//        roundScreens.clear();
-//
-//        newSpin = true;
-//    }
-//    roundWins.clear();
-//	roundAlreadyEnded = true;
-//	return;
-//    
-//}
-
-//void RandomLogGenerator::endRound() {
-//    if (loggingEnabled) {
-//        currentRound++;
-//
-//        double roundTotal = std::accumulate(roundWins.begin(), roundWins.end(), 0.0);
-//        logFile << "#" << roundTotal << "\n";
-//        roundWins.clear();
-//
-//        json roundData; // JSON object to hold data for all spins
-//
-//        for (size_t i = 0; i < roundScreens.size(); ++i) {
-//            json spinData; // JSON object to hold data for each spin
-//            spinData["spin_" + std::to_string(i)] = roundScreens[i];
-//            roundData.merge_patch(spinData); // Merge spin data into roundData
-//        }
-//
-//        gameDetailsFile << roundData.dump(4) << std::endl; // Output round data
-//        gameDetailsFile << "========== end round: " << currentRound << " ===========" << std::endl;
-//
-//        roundScreens.clear();
-//
-//        newSpin = true;
-//    }
-//}
-
-void RandomLogGenerator::enableLogging() {
-    loggingEnabled = true;
+// Start a new spin
+void RandomLogGenerator::startSpin() {
+    currentRandoms.clear();
+    currentSpinTotalWin = 0.0;
 }
 
-void RandomLogGenerator::disableLogging() {
-    loggingEnabled = false;
+// End the spin and log its data
+bool RandomLogGenerator::endSpin() {
+    if (logMode != LOGGING) return true;
+
+    // Log randoms and total win for the spin
+    std::string randomsLine = std::accumulate(currentRandoms.begin(), currentRandoms.end(), std::string(),
+        [](const std::string& a, const std::string& b) -> std::string {
+            return a.empty() ? b : a + "," + b;
+        });
+
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2) << currentSpinTotalWin / 100;
+    randomsLine += "#" + oss.str() + ";";
+
+    randomLogFile << randomsLine;
+    // Add the spin's win to the total round win
+    currentRoundTotalWin += currentSpinTotalWin;
+
+    // Check if maxRoundWin is hit or exceeded
+    if (currentRoundTotalWin >= maxRoundWin) {
+        // Log the full spin win even if it exceeds maxRoundWin
+        currentRoundTotalWin = maxRoundWin;
+        maxWinTriggered = true;
+        return false;  // Signal that max round win was hit
+    }
+
+    return true;  // Continue the round
 }
 
+
+
+// Add random result
+void RandomLogGenerator::addRandom(const RandTriple& randTriple) {
+    if (logMode == LOGGING) {
+        currentRandoms.push_back(randTriple.mask + ":" + std::to_string(randTriple.result) + ":" + std::to_string(randTriple.range));
+    }
+}
+
+// Add screen state
 void RandomLogGenerator::addScreen(json screen) {
-    if (loggingEnabled) {
+    if (logMode == LOGGING) {
         roundScreens.push_back(screen);
+    }
+}
+
+// Add win to the spin total
+void RandomLogGenerator::addWinAmount(double winAmount) {
+    currentSpinTotalWin += winAmount;
+}
+
+
+
+void RandomLogGenerator::addMultipliers(std::vector<int>& multipliersUsed) {
+    if (logMode == LOGGING) {
+        roundMultipliers.push_back(multipliersUsed);
+    }
+}
+
+void RandomLogGenerator::addWheelBonusPrizes(std::vector<double>& wheelBonusPrizes) {
+    if (logMode == LOGGING && !wheelBonusPrizes.empty()) {
+        roundWheelBonusPrizes.push_back(wheelBonusPrizes);  // Add only non-empty bonuses
+    }
+    else {
+        roundWheelBonusPrizes.push_back({});  // Add an empty vector to maintain order in spins
     }
 }
 
@@ -293,34 +329,8 @@ void RandomLogGenerator::parseLogLine(const std::string& line, std::vector<RandT
     }
 }
 
-void RandomLogGenerator::setLogFile(const std::string& filename) {
-    logFileName = filename;
-}
-
-void RandomLogGenerator::setGameDetailsFile(const std::string& filename) {
-    gameDetailsFileName = filename;
-}
 
 
-void RandomLogGenerator::handleLoggingMode(LogMode mode) {
-    if (mode == NO_LOGGING) {
-        RandomLogGenerator::disableLogging(); // Disable logging
-        std::cout << "Running in no logging mode" << std::endl;
-    }
-        
-    else if (mode == LOGGING) {
-        RandomLogGenerator::enableLogging(); // Enable logging
-        RandomLogGenerator::openLog();
-        std::cout << "Running in logging mode" << std::endl;
-    }
-    else if (mode == REPLAY) {
-        RandomLogGenerator::readAndParseLog(logFileName);
-        std::vector<RandTriple> randomLogInstructions = RandomLogGenerator::getRandomLogInstructions();
-        std::cout << "Running in replay mode using " << logFileName << std::endl;
-    }
-	else {
-		// Handle default or unknown mode
-        std::cout << "Unknown mode" << std::endl;
-    }
-}
+//
+
 #endif // RANDOMLOGGENERATOR_H
