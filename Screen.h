@@ -115,10 +115,19 @@ public:
         clearScreen();
         for (int reelIndex = 0; reelIndex < numReels; ++reelIndex) {
             for (int rowIndex = 0; rowIndex < numRows; ++rowIndex) {
-                updateCell(reelIndex, rowIndex, reelSet.reels[reelIndex].symbols[rowIndex]);
+                int currentIndex = (reelSet.currentIndices[reelIndex] + rowIndex) % reelSet.reels[reelIndex].symbols.size();
+                updateCell(reelIndex, rowIndex, reelSet.reels[reelIndex].symbols[currentIndex]);
             }
         }
     }
+    /*void generateScreen(ReelSet& reelSet) {
+        clearScreen();
+        for (int reelIndex = 0; reelIndex < numReels; ++reelIndex) {
+            for (int rowIndex = 0; rowIndex < numRows; ++rowIndex) {
+                updateCell(reelIndex, rowIndex, reelSet.reels[reelIndex].symbols[rowIndex]);
+            }
+        }
+    }*/
 
     // Function to count the number of times a symbol appears on a reel
     int countSymbolOnReel(int reelIndex, const string& symbol, bool includeWild = true) const {
@@ -219,8 +228,8 @@ public:
     //        }
     //    }
     //}
-    void cascadeSymbols(const ReelSet& reelSet, bool useDifferentReelSet, const ReelSet& alternateReelSet, std::vector<int>& nextIndices) {
-        const ReelSet& activeReelSet = useDifferentReelSet ? alternateReelSet : reelSet;
+    void cascadeSymbols(ReelSet& reelSet, bool useDifferentReelSet, ReelSet& alternateReelSet) {
+        ReelSet& activeReelSet = useDifferentReelSet ? alternateReelSet : reelSet;
 
         for (int reel = 0; reel < numReels; ++reel) {
             for (int row = numRows - 1; row >= 0; --row) {
@@ -229,13 +238,13 @@ public:
                     for (int aboveRow = row; aboveRow > 0; aboveRow--) {
                         grid[reel][aboveRow] = grid[reel][aboveRow - 1];
                     }
-
-                    // Fill the topmost position with a new symbol
-                    grid[reel][0] = activeReelSet.reels[reel].symbols[nextIndices[reel]];
-                    nextIndices[reel]--;
-                    if (nextIndices[reel] < 0) {
-                        nextIndices[reel] = activeReelSet.reels[reel].symbols.size() - 1;
+                    activeReelSet.currentIndices[reel]--;
+                    if (activeReelSet.currentIndices[reel] < 0) {
+                        activeReelSet.currentIndices[reel] = activeReelSet.reels[reel].symbols.size() - 1;
                     }
+                    // Fill the topmost position with a new symbol
+                    grid[reel][0] = activeReelSet.reels[reel].symbols[activeReelSet.currentIndices[reel]];
+                    
                 }
             }
         }

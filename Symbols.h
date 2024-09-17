@@ -156,8 +156,11 @@ private:
 
 public:
     std::vector<Reel> reels;
+    std::vector<int> currentIndices; // Store current indices
+
     // Constructor
-    ReelSet(const std::vector<Reel>& reels, const std::string& mask) : reels(reels), mask(mask) {}
+    ReelSet(const std::vector<Reel>& reels, const std::string& mask) : reels(reels), mask(mask), currentIndices(reels.size(), 0) {}
+
     // Default constructor
     ReelSet() {}
 
@@ -184,11 +187,12 @@ public:
             }
             chosenIndices.push_back(index);
         }
-        reorderReels(chosenIndices);
+        currentIndices = chosenIndices; // Update current indices
+        //reorderReels(chosenIndices);
     }
 
     // Helper method to reorder reels based on chosen indices
-    void reorderReels(const std::vector<int>& indices) {
+ /*   void reorderReels(const std::vector<int>& indices) {
         for (int reelIndex = 0; reelIndex < reels.size(); ++reelIndex) {
             std::vector<std::string> originalSymbols = reels[reelIndex].symbols;
             std::vector<int> originalWeights = reels[reelIndex].weights;
@@ -199,7 +203,7 @@ public:
             reels[reelIndex].symbols = originalSymbols;
             reels[reelIndex].weights = originalWeights;
         }
-    }
+    }*/
 };
 
 

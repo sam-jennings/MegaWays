@@ -87,7 +87,7 @@ public:
 
     double calculateWaysWins(Screen& screen, bool baseGame);
    
-    vector<double> handleCascades(Screen& screen, const ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame);
+    vector<double> handleCascades(Screen& screen, ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame);
 
     vector<double> playFreeGames(int numFreeGames, int numPremiumSpins);
 
@@ -179,7 +179,6 @@ void GameInstance::playBaseGame(int numSpins) {
         baseReelSet.spinReels();
         screen.generateScreen(baseReelSet);
 
-      
 
 
         baseVector = handleCascades(screen, baseReelSet, tumbleReelSet, true, true);
@@ -204,20 +203,12 @@ void GameInstance::playBaseGame(int numSpins) {
 
 }
 
-vector<double> GameInstance::handleCascades(Screen& screen, const ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame) {
+vector<double> GameInstance::handleCascades(Screen& screen, ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame) {
     bool hasNewWins;
     double initialWin = 0, tumbleWin = 0;
    int tumbleCount = 0;
 
-    std::vector<int> nextIndices(numReels, 0);
-    // Initialize nextIndex for each reel
-    /*for (int reel = 0; reel < numReels; ++reel) {
-        nextIndices[reel] = reelSet.reels[reel].symbols.size() - 1;
-    }*/
-    for (int reel = 0; reel < numReels; ++reel) {
-        nextIndices[reel] = (useDifferentReelSet ? offScreenReelSet : reelSet).reels[reel].symbols.size() - 1;
-    }
-
+   
     // If we're using a different reel set, spin it once before cascading
     if (useDifferentReelSet) {
         offScreenReelSet.spinReels(); //removed const to make work
@@ -237,9 +228,9 @@ vector<double> GameInstance::handleCascades(Screen& screen, const ReelSet& reelS
 
         if (!screen.getMarkedPositions().empty()) {
             hasNewWins = true;
-            tumbleCount++;
+            tumbleCount++;            
             screen.removeMarkedPositions();  // Remove the symbols at winning positions        
-            screen.cascadeSymbols(reelSet, useDifferentReelSet, offScreenReelSet, nextIndices);  // Cascade new symbols down
+            screen.cascadeSymbols(reelSet, useDifferentReelSet, offScreenReelSet);  // Cascade new symbols down
       
         }
     } while (hasNewWins);
@@ -312,11 +303,12 @@ vector<double> GameInstance::playFreeGames(int numFreeGames, int numPremiumSpins
         }
 
         // Add the screen to the log
-        RandomLogGenerator::addScreen(screen.toJson());
+       // RandomLogGenerator::addScreen(screen.toJson());
 
         tempPays = handleCascades(screen, freeReelSet, tumbleFree, true, false);
         pays[0] += tempPays[0]; // baseWin
         pays[1] += tempPays[1]; // tumbleWin
+        RandomLogGenerator::addWinAmount(tempPays[0] + tempPays[1]);
 
         // Check for free game symbols and trigger additional features
         int fgCount = screen.countSymbolOnScreen("F1", false);
