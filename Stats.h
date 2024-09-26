@@ -39,11 +39,11 @@ public:
     std::vector<int> bonusActivationsBase, bonusActivationsFree;
     SymbolStructure symbolStructure;
     std::unordered_map<int, int> scatterHits, tumbleFrequencies;
-    int numIterations;
+    long long numIterations;
     double cost;
 
     //explicit Stats(const GameConfig& config, ofstream* file, int numIterations) {
-    explicit Stats(const GameConfig& config, int _numIterations ) :individualPaysBuffer(1000) {
+    explicit Stats(const GameConfig& config, long long _numIterations ) :individualPaysBuffer(1000) {
         numIterations = _numIterations;
         baseGameHits = 0;
         bonusGameActivated = 0;
@@ -53,7 +53,7 @@ public:
         jpActivated = 0;
         bonusActivationsBase.resize(5, 0);
         bonusActivationsFree.resize(5, 0);
-        numIterations = numIterations;
+  
         cost = config.cost;
         payHeaders = config.payHeaders;
         payVector.resize(payHeaders.size());

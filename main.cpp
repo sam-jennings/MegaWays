@@ -83,7 +83,7 @@ public:
     }
 
 
-    void playBaseGame(int numSpins);
+    void playBaseGame(long long numSpins);
 
     double calculateWaysWins(Screen& screen, bool baseGame);
    
@@ -138,14 +138,17 @@ private:
 };
 
 
-void GameInstance::playBaseGame(int numSpins) {
+
+
+
+void GameInstance::playBaseGame(long long numSpins) {
     bool addMult;
     vector<double> baseVector;
   
     double temp_pay, multiplier;
     vector<double> temp_pays, freePays;
 
-    for (int i = 0; i < numSpins; ++i) {
+    for (long long i = 0; i < numSpins; ++i) {
         RandomLogGenerator::startRound();
         addMult = true;
         vector<double> pays(payHeaders.size(), 0); // {base_pay, free_pay, scatter_pay, total_pay}
@@ -473,7 +476,7 @@ void printFrequencyTableToFile(const std::string& categoryName, const std::unord
     }
 
     // Sort the frequencies
-    std::vector<std::pair<double, int>> freqVector(frequencyMap.begin(), frequencyMap.end());
+    std::vector<std::pair<double, long long>> freqVector(frequencyMap.begin(), frequencyMap.end());
     std::sort(freqVector.begin(), freqVector.end(),
         [](const auto& a, const auto& b) { return a.first < b.first; });
 
@@ -486,7 +489,7 @@ void printFrequencyTableToFile(const std::string& categoryName, const std::unord
     file.close();
 }
 
-void threadFunction(std::promise<Stats> promiseObj, GameConfig config, double numSpins) {
+void threadFunction(std::promise<Stats> promiseObj, GameConfig config, long long numSpins) {
     GameInstance gameInstance(config, numSpins);
     gameInstance.playBaseGame(numSpins);
     Stats localStats = gameInstance.gameStats;
@@ -499,7 +502,7 @@ int main() {
     timer.start(); 
 
     GameConfig gameConfig("config.json");
-    int numberOfSpins = 100000; //logging: 100000 
+    long long numberOfSpins = 5000000000LL; //logging: 100000 
     
     std::string outputFileBase = gameConfig.gameName + "_RTP" + gameConfig.RTP + "_" + gameConfig.gameMode;
     std::string outputFileName = outputFileBase + "_output.txt";
