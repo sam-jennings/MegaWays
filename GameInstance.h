@@ -3,305 +3,317 @@
 #include "Stats.h"
 #include "Screen.h"
 
-
-
 class GameInstance {
-    friend class GameConfig; // Declare GameConfig as a friend
-public:
-    explicit GameInstance(const GameConfig& config, int numIterations) : config(config), gameStats(config, numIterations), debugFile("debug.txt") { // Initialize with config
-        initializeGame();
-    }
-
-    ~GameInstance() {
-        if (debugFile.is_open()) {
-            debugFile.close(); // Ensure the file is closed in the destructor
-        }
-    }
-
-    Stats gameStats; // Stats object for tracking game statistics
-    int numRows;
-    int numReels;
-    PrizeDistribution<int> wheelActivation, freeActivation, wildWinMult, wildWinMultFree, expWinMult, expWinMultFree, fgPrizeDistFree, directPrize, directPrizeFree, jackpotPrize, jackpotPrizeFree;
-    PrizeDistribution<std::pair<int, int>> fgPrizeDist;
-
-    Screen screen;
-    int cost;
-    SymbolStructure symbolStructure;
-    ReelSet baseReelSet, freeReelSet, baseReelsLow, baseReelsHigh, tumbleReelSet, tumbleReelsLow, tumbleReelsHigh, tumbleFree, freeLow, freeHigh, wildWinsReels, expandedReels, premiumReels;
-    vector<int> reelWeights, reelWeightsFree;
-    vector<string> payHeaders;
-    vector<std::string> symbols;
-    std::map<std::string, std::vector<int>>paytable;
-    ofstream debugFile;
-
-    // Method to simulate a single spin and return the result
-    double simulateSingleSpin() {
-        playBaseGame(1);  // Simulate one spin
-        double lastSpinPayout = gameStats.getLastSpinPayout();  // Retrieve payout from the last spin
-        return lastSpinPayout - cost;  // Return net gain/loss (payout minus cost of one spin)
-    }
-
-
-    void playBaseGame(long long numSpins);
-
-    double calculateWaysWins(Screen& screen, bool baseGame);
-
-    vector<double> handleCascades(Screen& screen, ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame);
-
-    vector<double> playFreeGames(int numFreeGames, int numPremiumSpins);
 
 private:
-    GameConfig config; // Configuration for this game instance
+	std::shared_ptr<GameConfig> config;  // Assuming you have a GameConfig class
+	Stats& stats;                        // Assuming you have a Stats class
+	SymbolStructure symbolStructure;
+	std::string rtpKey;
 
-    // Private methods for internal game mechanics
-    void initializeGame() {
-        // Use GameConfig methods to initialize game components
-        numRows = config.numRows;
-        numReels = config.numReels;
-        wheelActivation = config.wheelActivation;
-        freeActivation = config.freeActivation;
-        payHeaders = config.payHeaders;
-        symbolStructure = config.symbolStructure;
-        baseReelsLow = config.baseReelsLow;
-        baseReelsHigh = config.baseReelsHigh;
-        tumbleReelsHigh = config.tumbleReelsHigh;
-        tumbleReelsLow = config.tumbleReelsLow;
-        tumbleFree = config.tumbleFree;
-        freeLow = config.freeLow;
-        freeHigh = config.freeHigh;
-        premiumReels = config.premiumReels;
-        wildWinsReels = config.wildWinsReels;
-        expandedReels = config.expandedReels;
-        wildWinMult = config.wildWinMult;
-        wildWinMultFree = config.wildWinMultFree;
-        expWinMult = config.expWinMult;
-        expWinMultFree = config.expWinMultFree;
-        directPrize = config.directPrize;
-        directPrizeFree = config.directPrizeFree;
-        jackpotPrize = config.jackpotPrize;
-        jackpotPrizeFree = config.jackpotPrizeFree;
-        fgPrizeDist = config.fgPrizeDist;
-        fgPrizeDistFree = config.fgPrizeDistFree;
-        reelWeights = config.reelWeights;
-        reelWeightsFree = config.reelWeightsFree;
-        screen.resize(numReels, numRows);
-        cost = config.cost;
-        symbols = symbolStructure.getSymbols();
-        paytable = symbolStructure.getPaytable();
+	// Game parameters
+	int numRows;
+	int numReels;
+	int cost;
+	std::vector<std::string> symbols;
+	std::map<std::string, std::vector<int>> paytable;
+	std::vector<std::string> payHeaders;
 
-        if (!debugFile.is_open()) {
-            cerr << "Failed to open debug file." << endl;
-        }
-    }
+	// ReelSets
+	ReelSet baseReelSet, tumbleReelSet, noWinReelSet;
+	std::unordered_map<std::string, ReelSet> allReelSets;
+	std::vector<int> reelWeights;
+	PrizeDistribution<int> ReelsPD;
+	vector<PrizeDistribution<double>> moneyPrizes;
+	// Game variables
+	Screen screen;
+	int tumbleCount;
+	int spinCount;
 
+	int lastReelSetID = -1;
+
+
+
+	enum PayIdx {
+		BASE = 0,
+		FREE_TOTAL,
+		TOTAL
+	};
+
+	void initializeGame() {
+		{
+			rtpKey = config->parseVar<std::string>("RTP");
+			numRows = config->parseVar<int>("rows");
+			numReels = config->parseVar<int>("reels");
+			payHeaders = config->getRTPHeaders();
+			symbolStructure = config->parseSymbolStructure();
+			allReelSets = config->parseAllReelSets();
+			/* baseReelSet = config->parseReelSet("baseLow");
+			 tumbleReelSet = config->parseReelSet("tumbleHigh");*/
+			reelWeights = config->parseVec<int32_t>("reelWeights", rtpKey);
+			//  reelWeightsFree = config->parseVec<int32_t>("reelWeightsFree");
+			ReelsPD = PrizeDistribution<int>("R-WTS", std::vector<int>{0, 1}, reelWeights);
+			cost = config->parseVar<int>("cost");
+			symbols = symbolStructure.getSymbols();
+			paytable = symbolStructure.getPaytable();
+			screen.resize(numReels, numRows);
+
+		}
+
+	};
+
+public:
+
+	explicit GameInstance(std::shared_ptr<GameConfig> config, SymbolStructure& symbolStructure, Stats& stats)
+		: config(config), symbolStructure(symbolStructure), stats(stats),
+		spinCount(0) {
+		initializeGame();
+	}
+
+
+	// Method to simulate a single spin and return the result
+	double simulateSingleSpin() {
+		playBaseGame(1);  // Simulate one spin
+		double lastSpinPayout = stats.getLastSpinPayout();  // Retrieve payout from the last spin
+		return lastSpinPayout - cost;  // Return net gain/loss (payout minus cost of one spin)
+	}
+
+
+	void playBaseGame(long long numSpins) {
+		vector<double> baseVector, freeVector;
+
+		double basePay, tempPay;
+
+		ReelSet activeReels;
+
+		for (long long i = 0; i < numSpins; ++i) {
+			basePay = 0;
+
+			RandomLogGenerator::startRound();
+			std::vector<double> pays(payHeaders.size(), 0); // You can adjust the size based on your needs
+			screen.clearScreen();
+
+			int reelID = ReelsPD.getRandomPrize();
+			lastReelSetID = reelID;
+			switch (reelID) {
+			case 0:
+				activeReels = allReelSets["baseLow"];				
+				break;
+			case 1:
+				activeReels = allReelSets["baseHigh"];
+				break;
+			}
+			activeReels.spinReels();
+			screen.generateScreen(activeReels);
+
+			//vector<vector<string>> forceScreen = {
+			//	{"R1", "WL", "R1"},
+			//	{"R2", "WL", "R2"},
+			//	{"R2", "Money", "R2"},
+			//	{"R2", "R6", "R2"},
+			//	{"R3", "R2", "R1"}
+			//};
+			//screen.fillScreen(forceScreen);
+
+			baseVector = handleCascades(screen, baseReelSet, tumbleReelSet, true, true);
+			// sum baseVector
+			basePay = baseVector[0] + baseVector[1]; // Initial win + tumble win
+			if (basePay)
+				stats.trackFeatureActivation("Line Win");
+
+			pays[BASE] += basePay;
+
+			int fgCount = screen.countSymbolOnScreen("F1", false);
+			if (fgCount == 3) {
+				freeVector = playFreeGames(10); // Play 10 free games with no pot
+				stats.trackFeatureActivation("Free Spins");
+			}
+
+			RandomLogGenerator::endRound();
+			// 
+			pays[TOTAL] = std::accumulate(pays.begin(), pays.end() - 2, 0.0);
+
+			if (pays[TOTAL])
+				stats.trackFeatureActivation("Base");
+
+			stats.completeWager(pays);
+		}
+
+	}
+
+
+	vector<double> playFreeGames(int numFreeGames) {
+		vector<double> pays(3, 0);
+		vector<double> tempPays;	
+		int freeSpinsRemaining = numFreeGames;
+
+		ReelSet freeReelSet;
+
+		if (getRand("R-WTS", reelWeights[0] + reelWeights[1]) < reelWeights[0]) {
+			freeReelSet = allReelSets["freeLow"];
+		}
+		else {
+			freeReelSet = allReelSets["freeHigh"];
+		}
+
+
+		Screen screen(numReels, numRows);
+		screen.clearScreen();
+
+
+		while (freeSpinsRemaining > 0) {
+			tumbleCount = 0;
+			RandomLogGenerator::newSpin();
+
+
+			freeReelSet.spinReels();
+			screen.generateScreen(freeReelSet);
+
+
+			freeSpinsRemaining--;
+
+		}
+
+		stats.recordTumbleFrequency(tumbleCount);
+		stats.recordFreeSpins(numFreeGames);
+		// pays = {baseWin, moneySymbolWins, wheelPotWins}
+		return pays;
+	}
+
+	vector<double> handleCascades(Screen& screen, ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame) {
+		bool hasNewWins;
+		double initialWin = 0, tumbleWin = 0;
+		int tumbleCount = 0;
+
+
+		// If we're using a different reel set, spin it once before cascading
+		if (useDifferentReelSet) {
+			offScreenReelSet.spinReels(); //removed const to make work
+		}
+
+		do {
+			hasNewWins = false;
+			screen.clearMarkedPositions(); // Clear previous positions
+
+			if (tumbleCount == 0) {
+				initialWin = calculateWaysWins(screen, baseGame);
+			}
+			else {
+				tumbleWin += calculateWaysWins(screen, baseGame);
+			}
+
+
+			if (!screen.getMarkedPositions().empty()) {
+				hasNewWins = true;
+				tumbleCount++;
+				screen.removeMarkedPositions();  // Remove the symbols at winning positions        
+				screen.cascadeSymbols(reelSet, useDifferentReelSet, offScreenReelSet);  // Cascade new symbols down
+
+			}
+		} while (hasNewWins);
+
+		if (initialWin && baseGame) {
+			stats.recordTumbleFrequency(tumbleCount);
+		}
+
+		return { initialWin, tumbleWin };
+	}
+
+	double calculateWaysWins(Screen& screen, bool baseGame) {
+		double totalPay = 0;
+		int multiplier = 1;
+
+
+		RandomLogGenerator::addScreen(screen.toJson());
+		// Clear previous marked positions
+		screen.clearMarkedPositions();
+
+		for (const auto& symbol : symbols) {
+			auto waysInfo = screen.getWaysForSymbol(symbol);
+			int length = waysInfo.first;
+			int ways = waysInfo.second;
+			int payout = 0;
+
+			if (length > 0) {
+				payout = multiplier * ways * paytable[symbol][length - 1];
+				if (payout > 0) {
+					stats.trackResult(symbol, length, ways, payout, baseGame);
+
+					screen.markSymbol(symbol, length);
+				}
+			}
+			totalPay += payout;
+		}
+
+
+		//RandomLogGenerator::addWinAmount(totalPay);
+		return totalPay;
+	}
+
+	//double calculateLineWins(Screen& screen, bool baseGame) {
+	//	double totalPay = 0;
+	//	RandomLogGenerator::addScreen(screen.toJson());
+	//	// Clear previous marked positions
+	//	screen.clearMarkedPositions();
+	//	// Evaluate each payline
+	//	for (int lineIndex = 0; lineIndex < screen.getNumPaylines(); ++lineIndex) {
+	//		std::string sym;
+	//		int         len = 0;
+	//		double pay = screen.evaluatePaylinePay(lineIndex, paytable, sym, len);
+	//		if (pay > 0)
+	//		{
+	//			stats.trackResult(sym, len, 1, pay, baseGame);
+	//			screen.markPayline(lineIndex, len);
+	//			totalPay += pay;
+	//		}
+	//		//std::tuple<std::string, int, bool> result = screen.evaluatePayline(lineIndex);
+	//		//std::string symbol = std::get<0>(result);
+	//		//int length = std::get<1>(result);
+	//		//bool isWinning = std::get<2>(result);
+	//		//if (isWinning && length > 0 && !symbol.empty()) {
+	//		//	// Look up the pay for this symbol and length
+	//		//	if (paytable.find(symbol) != paytable.end() && length <= paytable[symbol].size()) {
+	//		//		int payout = paytable[symbol][length - 1];
+	//		//		if (payout > 0) {
+	//		//			stats.trackResult(symbol, length, 1, payout, baseGame);
+	//		//			screen.markPayline(lineIndex, length);
+	//		//			totalPay += payout;
+	//		//		}
+	//		//	}
+	//		//}
+	//	}
+	//	return totalPay;
+	//}
+
+	int getLastReelSetID() const {
+		return lastReelSetID;
+	}
 };
-
-void GameInstance::playBaseGame(long long numSpins) {
-    bool addMult;
-    vector<double> baseVector;
-
-    double temp_pay, multiplier;
-    vector<double> temp_pays, freePays;
-
-    for (long long i = 0; i < numSpins; ++i) {
-        RandomLogGenerator::startRound();
-        addMult = true;
-        vector<double> pays(payHeaders.size(), 0); // {base_pay, free_pay, scatter_pay, total_pay}
-
-        // Choose reelset. 
-        if (getRand("R-WTS", reelWeights[0] + reelWeights[1]) < reelWeights[0]) {
-            baseReelSet = baseReelsLow;
-            tumbleReelSet = tumbleReelsLow;
-
-        }
-        else {
-            baseReelSet = baseReelsHigh;
-            tumbleReelSet = tumbleReelsLow;
-
-        }
-
-        if (getRand("FR-WTS", reelWeightsFree[0] + reelWeightsFree[1]) < reelWeightsFree[0]) {
-            freeReelSet = freeLow;
-        }
-        else {
-            freeReelSet = freeHigh;
-        }
-        /*  baseReelSet = baseReelsLow;
-          tumbleReelSet = tumbleReelsLow;*/
-
-          // Clear the screen before each spin (not necessary)
-        Screen screen(numReels, numRows);
-        screen.clearScreen();
-
-        // Spin reels and fill the screen with symbols
-        baseReelSet.spinReels();
-        screen.generateScreen(baseReelSet);
-
-
-
-        baseVector = handleCascades(screen, baseReelSet, tumbleReelSet, true, true);
-        RandomLogGenerator::addWinAmount(baseVector[0] + baseVector[1]);
-
-        pays[0] = baseVector[0];
-        pays[1] = baseVector[1];
-
-        //If 3 FG symbols appear, trigger a ladder
-        int fgCount = screen.countSymbolOnScreen("F1", false);
-        if (fgCount == 3) {
-            gameStats.activateBonusGame(4, true);
-
-        }
-
-        RandomLogGenerator::endRound();
-        pays[pays.size() - 1] = std::accumulate(pays.begin(), pays.end() - 1, 0.0);
-        // pays[6] = std::accumulate(pays.begin(), pays.end() - 5, 0.0);
-
-        gameStats.completeWager(pays);
-    }
-
-}
-
-vector<double> GameInstance::handleCascades(Screen& screen, ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame) {
-    bool hasNewWins;
-    double initialWin = 0, tumbleWin = 0;
-    int tumbleCount = 0;
-
-
-    // If we're using a different reel set, spin it once before cascading
-    if (useDifferentReelSet) {
-        offScreenReelSet.spinReels(); //removed const to make work
-    }
-
-    do {
-        hasNewWins = false;
-        screen.clearMarkedPositions(); // Clear previous positions
-
-        if (tumbleCount == 0) {
-            initialWin = calculateWaysWins(screen, baseGame);
-        }
-        else {
-            tumbleWin += calculateWaysWins(screen, baseGame);
-        }
-
-
-        if (!screen.getMarkedPositions().empty()) {
-            hasNewWins = true;
-            tumbleCount++;
-            screen.removeMarkedPositions();  // Remove the symbols at winning positions        
-            screen.cascadeSymbols(reelSet, useDifferentReelSet, offScreenReelSet);  // Cascade new symbols down
-
-        }
-    } while (hasNewWins);
-
-    if (initialWin && baseGame) {
-        gameStats.recordTumbleFrequency(tumbleCount);
-    }
-
-    return { initialWin, tumbleWin };
-}
-
-double GameInstance::calculateWaysWins(Screen& screen, bool baseGame) {
-    double totalPay = 0;
-    int multiplier = 1;
-
-
-    RandomLogGenerator::addScreen(screen.toJson());
-    // Clear previous marked positions
-    screen.clearMarkedPositions();
-
-    for (const auto& symbol : symbols) {
-        auto waysInfo = screen.getWaysForSymbol(symbol);
-        int length = waysInfo.first;
-        int ways = waysInfo.second;
-        int payout = 0;
-
-        if (length > 0) {
-            payout = multiplier * ways * paytable[symbol][length - 1];
-            if (payout > 0) {
-                gameStats.trackResult(symbol, length, ways, payout, baseGame);
-
-                screen.markSymbol(symbol, length);
-            }
-        }
-        totalPay += payout;
-    }
-
-
-    //RandomLogGenerator::addWinAmount(totalPay);
-    return totalPay;
-}
-
-
-vector<double> GameInstance::playFreeGames(int numFreeGames, int numPremiumSpins) {
-    vector<double> pays(5, 0); // {baseWin, tumbleWin, wildWin, expandedWin, freeGamesWon}
-    vector<double> tempPays;
-    double tempPay, multiplier;
-
-
-    vector<int> premiumSpins = getRandomPositions("PremChoices", numFreeGames, numPremiumSpins);
-    std::sort(premiumSpins.begin(), premiumSpins.end());
-
-    Screen screen(numReels, numRows);
-    screen.clearScreen();
-
-    int premiumIndex = 0;
-    int currentFreeGame = 0;
-
-    while (currentFreeGame < numFreeGames) {
-        RandomLogGenerator::newSpin();
-
-        if (premiumIndex < premiumSpins.size() && currentFreeGame == premiumSpins[premiumIndex]) {
-            premiumReels.spinReels();
-            screen.generateScreen(premiumReels);
-            premiumIndex++;
-        }
-        else {
-            freeReelSet.spinReels();
-            screen.generateScreen(freeReelSet);
-        }
-
-        // Add the screen to the log
-       // RandomLogGenerator::addScreen(screen.toJson());
-
-        tempPays = handleCascades(screen, freeReelSet, tumbleFree, true, false);
-        pays[0] += tempPays[0]; // baseWin
-        pays[1] += tempPays[1]; // tumbleWin
-        RandomLogGenerator::addWinAmount(tempPays[0] + tempPays[1]);
-
-        // Check for free game symbols and trigger additional features
-        int fgCount = screen.countSymbolOnScreen("F1", false);
-        if (fgCount == 3) {
-
-        }
-
-        currentFreeGame++;
-    }
-
-    return pays;
-}
 
 class PlayerSimulation {
 public:
-    PlayerSimulation(int startCredits, int targetCredits, GameConfig& config)
-        : startCredits(startCredits), targetCredits(targetCredits), gameConfig(config) {}
+	PlayerSimulation(int startCredits, int targetCredits, std::shared_ptr<GameConfig> config, SymbolStructure& symbolStructure, Stats& stats)
+		: startCredits(startCredits), targetCredits(targetCredits), gameConfig(config), symbolStructure(symbolStructure), stats(stats) {}
 
-    bool simulate() {
-        int currentCredits = startCredits;
-        GameInstance gameInstance(gameConfig, 1); // Prepared to simulate game spins
+	bool simulate() {
+		int currentCredits = startCredits;
+		GameInstance gameInstance(gameConfig, symbolStructure, stats);  // Updated GameInstance initialization
 
-        while (currentCredits > 0 && currentCredits < targetCredits) {
+		while (currentCredits > 0 && currentCredits < targetCredits) {
+			double result = gameInstance.simulateSingleSpin();  // Simulate spin and get net result
+			currentCredits += result;  // Update current credits
 
-            double result = gameInstance.simulateSingleSpin();  // Simulate spin and get net result            
-            currentCredits += result;  // Update current credits
-            // cout << "Result: " << result << endl;
-            // cout << "Current credits: " << currentCredits << endl;
-            if (result > 0) gameInstance.gameStats.recordWin(result);  // Optionally track wins
-        }
-        return currentCredits >= targetCredits;
-    }
+			if (result > 0) {
+				stats.recordWin(result);  // Track wins in Stats if result is positive
+			}
+		}
+		return currentCredits >= targetCredits;
+	}
 
 private:
-    int startCredits;
-    int targetCredits;
-    GameConfig& gameConfig;
+	int startCredits;
+	int targetCredits;
+	std::shared_ptr<GameConfig> gameConfig;
+	SymbolStructure& symbolStructure;
+	Stats& stats;  // Reference to the shared Stats object
 };

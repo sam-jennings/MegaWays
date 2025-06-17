@@ -30,12 +30,6 @@ public:
         grid.resize(numReels, vector<std::string>(numRows, ""));
     }
 
-    // Function to resize the screen with the specified number of reels and rows
-    /*void resize(int _numReels, int _numRows) {
-        numReels = _numReels;
-        numRows = _numRows;
-        grid.resize(numReels, vector<std::string>(numRows, ""));
-    }*/
     void resize(int _numReels, int _numRows) {
         // Resize the outer vector to have _numReels elements
         grid.resize(_numReels);
@@ -50,8 +44,6 @@ public:
         numRows = _numRows;
     }
 
-
-   
 
     void display(bool displayMarkedPositions = false) {
         cout << "Current Screen:" << endl;
@@ -120,14 +112,7 @@ public:
             }
         }
     }
-    /*void generateScreen(ReelSet& reelSet) {
-        clearScreen();
-        for (int reelIndex = 0; reelIndex < numReels; ++reelIndex) {
-            for (int rowIndex = 0; rowIndex < numRows; ++rowIndex) {
-                updateCell(reelIndex, rowIndex, reelSet.reels[reelIndex].symbols[rowIndex]);
-            }
-        }
-    }*/
+
 
     // Function to count the number of times a symbol appears on a reel
     int countSymbolOnReel(int reelIndex, const string& symbol, bool includeWild = true) const {
@@ -197,37 +182,6 @@ public:
         return screenJson;
     }
 
-    //// Method to cascade the screen by moving symbols down. Drop symbols to fill empty cells. New cells are filled with next symbols from the reel set.
-    //void cascadeSymbols(const ReelSet& reelSet, bool useDifferentReelSet, ReelSet alternateReelSet, std::vector<int>& nextIndices) {
-    //    for (int reel = 0; reel < numReels; ++reel) {
-    //        // Track where the new symbols should come from in the reel
-    //        int nextIndex = reelSet.reels[reel].symbols.size() - 1;
-
-    //        for (int row = numRows - 1; row >= 0; --row) {
-    //            while (grid[reel][row] == "") {
-    //                // Shift symbols above down to fill this empty position
-    //                for (int aboveRow = row; aboveRow > 0; aboveRow--) {
-    //                    grid[reel][aboveRow] = grid[reel][aboveRow - 1];
-    //                }
-
-    //                // Fill the topmost position with a new symbol
-    //                if (useDifferentReelSet) {
-    //                    alternateReelSet.spinReels();
-    //                    grid[reel][0] = alternateReelSet.reels[reel].symbols[0];
-    //                    /*int randomIndex = getRand("ALT_REEL", alternateReelSet.reels[reel].symbols.size());
-    //                    grid[reel][0] = alternateReelSet.reels[reel].symbols[randomIndex];*/
-    //                }
-    //                else {
-    //                    grid[reel][0] = reelSet.reels[reel].symbols[nextIndices[reel]];
-    //                    nextIndices[reel]--;
-    //                    if (nextIndices[reel] < 0) {
-    //                        nextIndices[reel] = reelSet.reels[reel].symbols.size() - 1;
-    //                    }
-    //                }
-    //            }
-    //        }
-    //    }
-    //}
     void cascadeSymbols(ReelSet& reelSet, bool useDifferentReelSet, ReelSet& alternateReelSet) {
         ReelSet& activeReelSet = useDifferentReelSet ? alternateReelSet : reelSet;
 

@@ -1,282 +1,373 @@
 #pragma once
 #include "GameConfig.h" // Include GameConfig to access configuration data
 #include <vector>
-#include <algorithm> 
+#include <algorithm>
 #include <fstream>
 #include <cmath> // Include for std::sqrt
 #include <unordered_map>
-#include <deque>
+#include <mutex>
 
-template<typename T>
-class RollingBuffer {
-public:
-    RollingBuffer(size_t size) : maxSize(size) {}
+#include <utility> // For std::pair
+#include <functional> // For hash specialization
 
-    void add(const std::vector<T>& value) {
-        if (buffer.size() >= maxSize) {
-            buffer.pop_front();
-        }
-        buffer.push_back(value);
-    }
-
-    const std::deque<std::vector<T>>& getBuffer() const { return buffer; }
-
-private:
-    size_t maxSize;
-    std::deque<std::vector<T>> buffer;
-};
+namespace std {
+	template <>
+	struct hash<std::pair<int, int>> {
+		size_t operator()(const std::pair<int, int>& p) const {
+			return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 1);
+		}
+	};
+}
 
 class Stats {
-public:
-    std::vector<std::string> payHeaders;
-    std::vector<double> payVector;
-   // std::vector<std::vector<double>> individualPays; // Each inner vector stores individual pays for "Base", "Wheel", "Free", "Total"
-    RollingBuffer<double> individualPaysBuffer;
-    std::vector< std::unordered_map<double, long long>> payFrequencies; // For storing frequencies of pays
-    std::vector<double> standardDeviations; // For storing calculated standard deviations
-    std::vector<std::vector<int>> baseSymHits, freeSymHits, baseSymPays, freeSymPays; // 2D array for tracking hits, size: numSymbols x numReels
-    int baseGameHits, bonusGameActivated, fgActivated, wwActivated, ewActivated, jpActivated;
-    std::vector<int> bonusActivationsBase, bonusActivationsFree;
-    SymbolStructure symbolStructure;
-    std::unordered_map<int, int> scatterHits, tumbleFrequencies;
-    long long numIterations;
-    double cost;
-
-    //explicit Stats(const GameConfig& config, ofstream* file, int numIterations) {
-    explicit Stats(const GameConfig& config, long long _numIterations ) :individualPaysBuffer(1000) {
-        numIterations = _numIterations;
-        baseGameHits = 0;
-        bonusGameActivated = 0;
-        fgActivated = 0;
-        wwActivated = 0;
-        ewActivated = 0;
-        jpActivated = 0;
-        bonusActivationsBase.resize(5, 0);
-        bonusActivationsFree.resize(5, 0);
-  
-        cost = config.cost;
-        payHeaders = config.payHeaders;
-        payVector.resize(payHeaders.size());
-       // individualPays.resize(payHeaders.size());
-        payFrequencies.resize(payHeaders.size());
-        baseSymHits.resize(config.symbolList.size(), std::vector<int>(config.numReels, 0));
-        freeSymHits.resize(config.symbolList.size(), std::vector<int>(config.numReels, 0));
-        baseSymPays.resize(config.symbolList.size(), std::vector<int>(config.numReels, 0));
-        freeSymPays.resize(config.symbolList.size(), std::vector<int>(config.numReels, 0));
-        symbolStructure = config.symbolStructure;
-        //scatterHits.resize(config.scatterPrizeDistribution.getPrizes().size(), 0);
-    }
-
-    void trackResult(const std::string& symbol, int length, int ways, double pay, bool base) {
-        int symbolIndex = symbolStructure.findSymbolIndex(symbol);
-        if (base) {
-            baseSymHits[symbolIndex][length - 1] += ways;
-            baseSymPays[symbolIndex][length - 1] += pay;
-        }
-        else {
-            freeSymHits[symbolIndex][length - 1] += ways;
-            freeSymPays[symbolIndex][length - 1] += pay;
-        }
-    }
-
-    void recordScatterHit(int prize) { //check if prize already exists in map, otherwise add it and increment
-        if (scatterHits.find(prize) == scatterHits.end()) {
-            scatterHits[prize] = 1;
-        }
-        else {
-            scatterHits[prize]++;
-        }
-    }
-
-    void recordTumbleFrequency(int tumble) {
-        if (tumbleFrequencies.find(tumble) == tumbleFrequencies.end()) {
-			tumbleFrequencies[tumble] = 1;
-		}
-        else {
-			tumbleFrequencies[tumble]++;
-		}
-	}
-
-    double calculateAverageTumbleFrequency() {
-		double totalTumbles = 0;
-        double totalHits = 0;
-        for (const auto& pair : tumbleFrequencies) {
-			totalTumbles += pair.first * pair.second;
-			totalHits += pair.second;
-		}
-		return totalTumbles / totalHits;
-	}
-
-    void completeWager(std::vector<double> pays) {
-        for (int i = 0; i < pays.size(); i++) {
-            payVector[i] += pays[i];
-            //individualPays[i].push_back(pays[i]);            
-            payFrequencies[i][pays[i]]++;
-        }
-        individualPaysBuffer.add(pays);
-        if (pays[0] > 0) { //check what counts as a base game hit
-            baseGameHits++;
-        }
-    }
-
-    void activateFG() {
-        fgActivated++;
-    }
-
-    void activateBonusGame() {
-        bonusGameActivated++;
-    }
-
-    void activateWW() {
-		wwActivated++;
-	}
-
-    void activateEW() {
-        ewActivated++;
-    }
-
-    void activateJP() {
-		jpActivated++;
-	}
-    // Methods to track activations
-    void activateBonusGame(int index, bool base) {
-        if (base) {
-			bonusActivationsBase[index]++;
-		}
-		else {
-			bonusActivationsFree[index]++;
-		}
-	}
-
-    double calculateStandardDeviation(const std::vector<double>& pays) {
-        if (pays.empty()) return 0.0;
-        double mean = std::accumulate(pays.begin(), pays.end(), 0.0) / pays.size();
-        double variance = 0.0;
-        for (auto pay : pays) {
-            variance += std::pow(pay - mean, 2);
-        }
-        variance /= pays.size();
-        return std::sqrt(variance);
-    }
-
-    /*void calculateStandardDeviations() {
-        standardDeviations.resize(individualPays.size());
-        for (size_t i = 0; i < individualPays.size(); ++i) {
-            standardDeviations[i] = calculateStandardDeviation(individualPays[i]);
-        }
-    }*/
-
-    void calculateStandardDeviations() {
-        standardDeviations.clear(); // Make sure to clear previous standard deviations
-        standardDeviations.resize(payFrequencies.size(), 0.0);
-
-        for (size_t i = 0; i < payFrequencies.size(); ++i) {
-            double mean = 0.0;
-            double variance = 0.0;
-            double totalWeight = 0.0;
-
-            // Calculate the mean
-            for (const auto& pair : payFrequencies[i]) {
-                mean += pair.first * pair.second;
-                totalWeight += pair.second;
-            }
-            mean /= totalWeight;
-
-            // Calculate the variance
-            for (const auto& pair : payFrequencies[i]) {
-                variance += pair.second * std::pow(pair.first - mean, 2);
-            }
-            variance /= totalWeight;
-
-            // Calculate the standard deviation
-            standardDeviations[i] = std::sqrt(variance);
-        }
-    }
-
-    void aggregate(const Stats& other) {
-
-        for (size_t symbolIndex = 0; symbolIndex < baseSymHits.size(); ++symbolIndex) {
-            for (size_t reelIndex = 0; reelIndex < baseSymHits[symbolIndex].size(); ++reelIndex) {
-                // Sum the corresponding values from 'other' into this instance
-                this->baseSymHits[symbolIndex][reelIndex] += other.baseSymHits[symbolIndex][reelIndex];
-            }
-        }
-
-        for (size_t symbolIndex = 0; symbolIndex < freeSymHits.size(); ++symbolIndex) {
-            for (size_t reelIndex = 0; reelIndex < freeSymHits[symbolIndex].size(); ++reelIndex) {
-                // Sum the corresponding values from 'other' into this instance
-                this->freeSymHits[symbolIndex][reelIndex] += other.freeSymHits[symbolIndex][reelIndex];
-            }
-        }
-
-        for (size_t symbolIndex = 0; symbolIndex < baseSymPays.size(); ++symbolIndex) {
-            for (size_t reelIndex = 0; reelIndex < baseSymPays[symbolIndex].size(); ++reelIndex) {
-                // Sum the corresponding values from 'other' into this instance
-                this->baseSymPays[symbolIndex][reelIndex] += other.baseSymPays[symbolIndex][reelIndex];
-            }
-        }
-
-        for (size_t symbolIndex = 0; symbolIndex < freeSymPays.size(); ++symbolIndex) {
-            for (size_t reelIndex = 0; reelIndex < freeSymPays[symbolIndex].size(); ++reelIndex) {
-                // Sum the corresponding values from 'other' into this instance
-                this->freeSymPays[symbolIndex][reelIndex] += other.freeSymPays[symbolIndex][reelIndex];
-            }
-        }
-        for (int i = 0; i < payVector.size(); i++) {
-            this->payVector[i] += other.payVector[i];
-        }
-
-        /*for (size_t i = 0; i < individualPays.size(); ++i) {
-            individualPays[i].insert(individualPays[i].end(), other.individualPays[i].begin(), other.individualPays[i].end());
-        }*/
-
-        // Aggregate tumble frequencies
-        for (const auto& pair : other.tumbleFrequencies) {
-			this->tumbleFrequencies[pair.first] += pair.second;
-		}
-
-        // Aggregate the pay frequencies
-        for (size_t i = 0; i < other.payFrequencies.size(); ++i) {
-            for (const auto& pair : other.payFrequencies[i]) {
-                this->payFrequencies[i][pair.first] += pair.second;
-            }
-        }
-
-        this->baseGameHits += other.baseGameHits;
-        this->fgActivated += other.fgActivated;
-        this->bonusGameActivated += other.bonusGameActivated;
-        this->wwActivated += other.wwActivated;
-        this->ewActivated += other.ewActivated;
-        this->jpActivated += other.jpActivated;
-
-        for (size_t i = 0; i < bonusActivationsBase.size(); ++i) {
-			this->bonusActivationsBase[i] += other.bonusActivationsBase[i];
-            }
-
-		for (size_t i = 0; i < bonusActivationsFree.size(); ++i) {
-            this->bonusActivationsFree[i] += other.bonusActivationsFree[i];
-		}
-
-    }
-
-    // Method to get payout from the last spin
-    double getLastSpinPayout() const {
-        if (individualPaysBuffer.getBuffer().empty()) return 0.0;
-        return individualPaysBuffer.getBuffer().back()[6];
-       // return individualPaysBuffer.getBuffer()[6];
-    }
-
-    
-    void recordWin(double amount) {
-        // Increment total wins
-        totalWins++;
-        // Add the win amount to the total winnings
-        totalWinnings += amount;
-        // Optionally, you could track wins over a certain threshold or record details of each win
-    }
-
 private:
-    int totalWins = 0;
-    double totalWinnings = 0.0;
+	std::mutex statsMutex;
+
+	long long numIterations;
+	long long baseGameHits = 0;
+	double costPerSpin;
+	double totalWin;
+	std::vector<std::string> rtpHeaders;
+	std::vector<double> payVector, lastPay;
+	std::vector<std::unordered_map<double, long long>> payFrequencies;
+	std::unordered_map<std::string, long long> featureHits;
+	std::vector<std::vector<long long>> baseSymHits;
+	std::vector<std::vector<double>> baseSymPays;
+	std::unordered_map<int, long long> scatterHits, freeSpinsFreq, tumbleFreq;
+	SymbolStructure& symbolStructure;
+	std::vector<double> standardDeviations;
+	int totalWins = 0;
+	double totalWinnings = 0.0;
+	std::pair<int, double> moneyEntry; // <count, amount>
+
+	std::unordered_map<std::pair<int, int>, long long, std::hash<std::pair<int, int>>> scaleFrequency;
+
+public:
+	explicit Stats(SymbolStructure& symbolStructure, const std::vector<std::string>& rtpHeaders, double costPerSpin)
+		: symbolStructure(symbolStructure), rtpHeaders(rtpHeaders), costPerSpin(costPerSpin) {
+		numIterations = 0;
+		totalWin = 0.0;
+
+		size_t numRTPs = rtpHeaders.size();
+		payVector.resize(numRTPs, 0.0);
+		payFrequencies.resize(numRTPs);
+
+		// featureHits.resize(featureNames.size(), 0);
+
+		int numSymbols = symbolStructure.getNumSymbols();
+		int maxLength = symbolStructure.getWinLength();
+		baseSymHits.resize(numSymbols, std::vector<long long>(maxLength, 0));
+		baseSymPays.resize(numSymbols, std::vector<double>(maxLength, 0.0));
+	}
+	void setNumIterations(long long iterations) {
+		std::lock_guard<std::mutex> lock(statsMutex);
+		numIterations = iterations;
+	}
+
+	void trackResult(const std::string& symbol, int length, int ways, double pay, bool base) {
+		std::lock_guard<std::mutex> lock(statsMutex);
+		int symbolIndex = symbolStructure.findSymbolIndex(symbol);
+		int lengthIndex = length - 1;
+		if (base) {
+			baseSymHits[symbolIndex][lengthIndex] += ways;
+			baseSymPays[symbolIndex][lengthIndex] += pay;
+		}
+	}
+
+	void recordScatterHit(int prize) {
+		std::lock_guard<std::mutex> lock(statsMutex);
+		scatterHits[prize]++;
+	}
+
+	void recordTumbleFrequency(int tumbles) {
+		std::lock_guard<std::mutex> lock(statsMutex);
+		tumbleFreq[tumbles]++;
+	}
+
+	//record number of free spins
+	void recordFreeSpins(int freeSpins) {
+		std::lock_guard<std::mutex> lock(statsMutex);
+		freeSpinsFreq[freeSpins]++;
+	}
+
+	double calculateAverageTumbleFrequency() const {
+		long long totalTumbles = 0;
+		long long totalOccurrences = 0;
+		for (const auto& pair : tumbleFreq) {
+			totalTumbles += pair.first * pair.second;
+			totalOccurrences += pair.second;
+		}
+		if (totalOccurrences == 0) {
+			return 0.0;
+		}
+		return static_cast<double>(totalTumbles) / totalOccurrences;
+	}
+
+	double calculateAverageFreeSpins() const {
+		long long totalFreeSpins = 0;
+		long long totalOccurrences = 0;
+		for (const auto& pair : freeSpinsFreq) {
+			totalFreeSpins += pair.first * pair.second;
+			totalOccurrences += pair.second;
+		}
+		if (totalOccurrences == 0) {
+			return 0.0;
+		}
+		return static_cast<double>(totalFreeSpins) / totalOccurrences;
+	}
+
+	void completeWager(const std::vector<double>& pays) {
+		std::lock_guard<std::mutex> lock(statsMutex);
+		for (size_t i = 0; i < pays.size(); i++) {
+			payVector[i] += pays[i];
+			payFrequencies[i][pays[i]]++;
+		}
+		if (pays[0] > 0) {
+			baseGameHits++;
+		}
+		lastPay = pays;
+	}
+
+	//void trackFeatureActivation(const std::string& featureName) {
+	//    std::lock_guard<std::mutex> lock(statsMutex);
+	//    auto it = std::find(featureNames.begin(), featureNames.end(), featureName);
+	//    if (it != featureNames.end()) {
+	//        size_t index = std::distance(featureNames.begin(), it);
+	//        featureHits[index]++;
+	//    }
+	//}
+
+	void trackFeatureActivation(const std::string& featureName) {
+		std::lock_guard<std::mutex> lock(statsMutex);
+		featureHits[featureName]++; // Increment the count for the feature
+	}
+
+	double calculateStandardDeviation(const std::vector<double>& pays) const {
+		if (pays.empty()) return 0.0;
+		double mean = std::accumulate(pays.begin(), pays.end(), 0.0) / pays.size();
+		double variance = 0.0;
+		for (auto pay : pays) {
+			variance += std::pow(pay - mean, 2);
+		}
+		variance /= pays.size();
+		return std::sqrt(variance);
+	}
+
+	void calculateStandardDeviations() {
+		std::lock_guard<std::mutex> lock(statsMutex);
+		standardDeviations.clear();
+		standardDeviations.resize(payFrequencies.size(), 0.0);
+
+		for (size_t i = 0; i < payFrequencies.size(); ++i) {
+			double mean = 0.0;
+			double variance = 0.0;
+			double totalWeight = 0.0;
+
+			for (const auto& pair : payFrequencies[i]) {
+				mean += pair.first * pair.second;
+				totalWeight += pair.second;
+			}
+			mean /= totalWeight;
+
+			for (const auto& pair : payFrequencies[i]) {
+				variance += pair.second * std::pow(pair.first - mean, 2);
+			}
+			variance /= totalWeight;
+
+			standardDeviations[i] = std::sqrt(variance);
+		}
+	}
+
+	void aggregate(const Stats& other) {
+		std::lock_guard<std::mutex> lock(statsMutex);
+
+		numIterations += other.numIterations;
+		totalWin += other.totalWin;
+		baseGameHits += other.baseGameHits;
+
+		for (size_t i = 0; i < payVector.size(); ++i) {
+			payVector[i] += other.payVector[i];
+			for (const auto& freqPair : other.payFrequencies[i]) {
+				payFrequencies[i][freqPair.first] += freqPair.second;
+			}
+		}
+
+		// Aggregate featureHits
+		for (const auto& pair : other.featureHits) {
+			featureHits[pair.first] += pair.second;
+		}
+
+		for (size_t i = 0; i < baseSymHits.size(); ++i) {
+			for (size_t j = 0; j < baseSymHits[i].size(); ++j) {
+				baseSymHits[i][j] += other.baseSymHits[i][j];
+				baseSymPays[i][j] += other.baseSymPays[i][j];
+			}
+		}
+
+		for (const auto& pair : other.scatterHits) {
+			scatterHits[pair.first] += pair.second;
+		}
+
+		for (const auto& pair : other.tumbleFreq) {
+			tumbleFreq[pair.first] += pair.second;
+		}
+
+		for (const auto& pair : other.freeSpinsFreq) {
+			freeSpinsFreq[pair.first] += pair.second;
+		}
+
+		for (const auto& pair : other.scaleFrequency) {
+			scaleFrequency[pair.first] += pair.second;
+		}
+		moneyEntry.first += other.moneyEntry.first;
+		moneyEntry.second += other.moneyEntry.second;
+
+
+		totalWins += other.totalWins;
+		totalWinnings += other.totalWinnings;
+	}
+
+	double getLastSpinPayout() const {
+		if (lastPay.empty()) return 0.0;
+		return lastPay.back();
+	}
+
+	void recordWin(double amount) {
+		std::lock_guard<std::mutex> lock(statsMutex);
+		totalWins++;
+		totalWinnings += amount;
+	}
+
+	void outputData(std::ofstream& file) const {
+		file << "RTP and Standard Deviation Breakdown\n";
+		file << "Name\tRTP\tStDev\n";
+
+		for (size_t i = 0; i < rtpHeaders.size(); ++i) {
+			double rtp = payVector[i] / (numIterations * costPerSpin);
+			double stDev = standardDeviations[i];
+			file << rtpHeaders[i] << '\t' << std::setprecision(6) << rtp << '\t' << std::setprecision(4) << stDev << '\n';
+		}
+		file << "----------------------------------------\n";
+
+		file << "Iterations\t" << numIterations << '\n';
+		file << "Total Pay\t" << payVector[3] << '\n';
+
+		// Sort featureHits by name as featureHitsOrdered
+		file << "Feature Hits\n";
+
+
+
+
+		file << "Feature\tHits\tHit Rate\n";
+
+		// Copy map to a vector for sorting
+		std::vector<std::pair<std::string, long long>> sortedFeatures(featureHits.begin(), featureHits.end());
+
+		// Sort by hits in descending order
+		std::sort(sortedFeatures.begin(), sortedFeatures.end(),
+			[](const auto& a, const auto& b) {
+				return a.second > b.second; // Compare feature hit counts
+			});
+
+		// Output sorted results
+		for (const auto& pair : sortedFeatures) {
+			long long hits = pair.second;
+			double hitRate = (hits > 0) ? numIterations / static_cast<double>(hits) : 0.0;
+			file << pair.first << '\t' << hits << '\t' << std::setprecision(8) << hitRate << '\n';
+		}
+
+		file << "----------------------------------------\n";
+
+		file << "Base Hits\n";
+		file << "Symbol";
+		for (size_t i = 0; i < baseSymHits[0].size(); ++i) {
+			file << '\t' << i + 1;
+		}
+		file << '\n';
+		for (size_t i = 0; i < baseSymHits.size(); ++i) {
+			file << symbolStructure.getSymbols()[i];
+			for (const auto& hits : baseSymHits[i]) {
+				file << '\t' << hits;
+			}
+			file << '\n';
+		}
+
+		file << "----------------------------------------\n";
+
+		file << "Base Pays\n";
+		file << "Symbol";
+		for (size_t i = 0; i < baseSymPays[0].size(); ++i) {
+			file << '\t' << i + 1;
+		}
+		file << '\n';
+		for (size_t i = 0; i < baseSymPays.size(); ++i) {
+			file << symbolStructure.getSymbols()[i];
+			for (const auto& hits : baseSymPays[i]) {
+				file << '\t' << hits;
+			}
+			file << '\n';
+		}
+		file << "----------------------------------------\n";
+		file << "Average Free Spins: " << '\t' << calculateAverageFreeSpins() << '\n';
+		file << "----------------------------------------\n";
+	
+		file << "Tumble Frequencies\n";
+		file << "Number Tumble\tFrequency\n";
+		for (const auto& pair : tumbleFreq) {
+			file << pair.first << '\t' << pair.second << '\n';
+		}
+		file << "----------------------------------------\n";
+		file << "Average Tumbles: " << '\t' << calculateAverageTumbleFrequency() << '\n';
+
+		/*
+	file << "Scale Pair Frequencies\n";
+	outputScalePairFrequencies(file);*/
+	}
+
+	void printFrequencyTableToFile(const std::string& categoryName, const std::unordered_map<double, long long>& frequencyMap) const {
+		std::string filename = "pay_frequency_" + categoryName + ".txt";
+		std::ofstream file(filename);
+		if (!file.is_open()) {
+			std::cerr << "Failed to open " << filename << std::endl;
+			return;
+		}
+
+		std::vector<std::pair<double, long long>> freqVector(frequencyMap.begin(), frequencyMap.end());
+		std::sort(freqVector.begin(), freqVector.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+
+		file << "Pay\tFrequency\n";
+		for (const auto& pair : freqVector) {
+			file << pair.first << "\t" << pair.second << "\n";
+		}
+
+		file.close();
+	}
+
+	void printFrequencyTables() const {
+		for (size_t i = 0; i < payFrequencies.size(); ++i) {
+			printFrequencyTableToFile(rtpHeaders[i], payFrequencies[i]);
+		}
+	}
+
+	int getTumbleCount() const {
+		return std::accumulate(tumbleFreq.begin(), tumbleFreq.end(), 0,
+			[](int sum, const auto& pair) { return sum + pair.second; });
+	}
+
+	double getFreeSpinPayout() const { //change depending on payVector
+		// Calculate free spin pays
+		double freeSpinPayout = 0.0;
+		for (size_t i = 2; i < 7; ++i) { // Change to the range of indices that represent free spins
+			freeSpinPayout += payVector[i];
+		}
+		return freeSpinPayout;
+	}
+
+
+	void trackMoneyEntry(double amount) {
+		std::lock_guard<std::mutex> lock(statsMutex);
+		moneyEntry.first++;
+		moneyEntry.second += amount;
+	}
 
 };

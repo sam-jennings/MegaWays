@@ -6,8 +6,7 @@
 #include <unordered_map>
 #include <random>
 #include <iomanip> // For std::setw and std::left
-//#include "Stats.h" 
-//#include "Screen.h" 
+#include "Stats.h" 
 #include "GameInstance.h"
 
 using namespace std;
@@ -15,8 +14,6 @@ using namespace std;
 #include <chrono> // For time measurements
 #include <thread> // For multithreading
 #include <future> // For std::promise and std::future
-
-
 
 class Timer {
 private:
@@ -33,185 +30,51 @@ public:
     }
 };
 
-
-//int instructionIndex = 0;
-
 enum SimulationMode {
     EXACT_MODE,
     RANDOM_MODE,
-    PLAYER_MODE
+    PLAYER_MODE,
+    CSV_MODE
 };
 
-LogMode logMode = LOGGING; // NO_LOGGING, LOGGING, REPLAY
-SimulationMode simulationMode = RANDOM_MODE;
+LogMode logMode = NO_LOGGING; // NO_LOGGING, LOGGING, REPLAY
+SimulationMode simulationMode = CSV_MODE; // RANDOM_MODE;
 
 
-
-
-
-void outputData(std::ofstream& file, Stats gameStats) {
-    file << "RTP and Standard Deviation Breakdown\n";
-    file << "Name\tRTP\tStDev\n";
-
-    for (size_t i = 0; i < gameStats.payHeaders.size(); ++i) {
-        double rtp = gameStats.payVector[i] / (gameStats.numIterations * gameStats.cost);
-        double stDev = gameStats.standardDeviations[i];
-        file << gameStats.payHeaders[i] << '\t' << std::setprecision(6) << rtp << '\t' << std::setprecision(4) << stDev << '\n';
-    }
-    file << "----------------------------------------\n";
-
-    // Output the total pay
-    file << "Iterations\t" << gameStats.numIterations << '\n';
-    file << "Total Pay\t" << gameStats.payVector[3] << '\n';
-
-    file << "Feature\tHits\tHit Rate\n";
-    file << "Base Game\t" << gameStats.baseGameHits << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.baseGameHits << '\n';
-    file << "Bonus Game\t" << gameStats.bonusActivationsBase[4] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsBase[4] << '\n';
-    file << "Wild Win\t" << gameStats.bonusActivationsBase[0] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsBase[0] << '\n';
-    file << "Expanded Win\t" << gameStats.bonusActivationsBase[1] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsBase[1] << '\n';
-    file << "Free Game\t" << gameStats.bonusActivationsBase[2] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsBase[2] << '\n';
-    file << "JackPot\t" << gameStats.bonusActivationsBase[3] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsBase[3] << '\n';
-
-    file << "----------------------------------------\n";
-
-    file << "Bonus Game\t" << gameStats.bonusActivationsFree[4] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsFree[4] << '\n';
-    file << "Wild Win\t" << gameStats.bonusActivationsFree[0] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsFree[0] << '\n';
-    file << "Expanded Win\t" << gameStats.bonusActivationsFree[1] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsFree[1] << '\n';
-    file << "Free Game\t" << gameStats.bonusActivationsFree[2] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsFree[2] << '\n';
-    file << "JackPot\t" << gameStats.bonusActivationsFree[3] << '\t' << static_cast<double>(gameStats.numIterations) / gameStats.bonusActivationsFree[3] << '\n';
-
-    file << "----------------------------------------\n";
-
-    // Output the table of symbol hits
-    file << "Base Hits\n";
-    file << "Symbol";
-    for (size_t i = 0; i < gameStats.baseSymHits[0].size(); ++i) {
-        file << '\t' << i + 1;
-    }
-    file << '\n';
-    for (size_t i = 0; i < gameStats.baseSymHits.size(); ++i) {
-        file << gameStats.symbolStructure.getSymbols()[i];
-        for (const auto& hits : gameStats.baseSymHits[i]) {
-            file << '\t' << hits;
-        }
-        file << '\n';
-    }
-
-    file << "----------------------------------------\n";
-
-    // Output the table of symbol pays
-    file << "Base Pays\n";
-    file << "Symbol";
-    for (size_t i = 0; i < gameStats.baseSymPays[0].size(); ++i) {
-        file << '\t' << i + 1;
-    }
-    file << '\n';
-    for (size_t i = 0; i < gameStats.baseSymPays.size(); ++i) {
-        file << gameStats.symbolStructure.getSymbols()[i];
-        for (const auto& hits : gameStats.baseSymPays[i]) {
-            file << '\t' << hits;
-        }
-        file << '\n';
-    }
-
-    file << "----------------------------------------\n";
-
-    // Output the table of symbol hits
-    file << "Free Hits\n";
-    file << "Symbol";
-    for (size_t i = 0; i < gameStats.freeSymHits[0].size(); ++i) {
-        file << '\t' << i + 1;
-    }
-    file << '\n';
-    for (size_t i = 0; i < gameStats.freeSymHits.size(); ++i) {
-        file << gameStats.symbolStructure.getSymbols()[i];
-        for (const auto& hits : gameStats.freeSymHits[i]) {
-            file << '\t' << hits;
-        }
-        file << '\n';
-    }
-
-    file << "----------------------------------------\n";
-
-    // Output the table of symbol pays
-    file << "Free Pays\n";
-    file << "Symbol";
-    for (size_t i = 0; i < gameStats.freeSymPays[0].size(); ++i) {
-        file << '\t' << i + 1;
-    }
-    file << '\n';
-    for (size_t i = 0; i < gameStats.freeSymPays.size(); ++i) {
-        file << gameStats.symbolStructure.getSymbols()[i];
-        for (const auto& hits : gameStats.freeSymPays[i]) {
-            file << '\t' << hits;
-        }
-        file << '\n';
-    }
-
-    file << "----------------------------------------\n";
-
-    // Output the tumble frequencies
-    file << "Tumble Frequencies\n";
-    file << "Tumbles\tFrequency\n";
-    for (const auto& pair : gameStats.tumbleFrequencies) {
-        file << pair.first << '\t' << pair.second << '\n';
-    }
-
-    // Output the average tumble frequency
-    file << "Average Tumble Frequency: " << gameStats.calculateAverageTumbleFrequency() << '\n';
-}
-
-void printFrequencyTableToFile(const std::string& categoryName, const std::unordered_map<double, long long>& frequencyMap) {
-    // Construct a unique filename for this category
-    std::string filename = "pay_frequency_" + categoryName + ".txt";
-
-    // Open the file for this category
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Failed to open " << filename << std::endl;
-        return; // Error handling
-    }
-
-    // Sort the frequencies
-    std::vector<std::pair<double, long long>> freqVector(frequencyMap.begin(), frequencyMap.end());
-    std::sort(freqVector.begin(), freqVector.end(),
-        [](const auto& a, const auto& b) { return a.first < b.first; });
-
-    // Print the frequency table to the file
-    file << "Pay\tFrequency\n";
-    for (const auto& pair : freqVector) {
-        file << pair.first << "\t" << pair.second << "\n";
-    }
-
-    file.close();
-}
-
-void threadFunction(std::promise<Stats> promiseObj, GameConfig config, long long numSpins) {
-    GameInstance gameInstance(config, numSpins);
-    gameInstance.playBaseGame(numSpins);
-    Stats localStats = gameInstance.gameStats;
-    promiseObj.set_value(localStats);
-}
 
 int main() {
     // Create a timer instance
     Timer timer;
-    timer.start(); 
+    timer.start();
 
-    GameConfig gameConfig("config.json");
-    long long numberOfSpins = 1000LL; //logging: 100000 
-    
-    std::string outputFileBase = gameConfig.gameName + "_RTP" + gameConfig.RTP + "_" + gameConfig.gameMode;
+    //GameConfig gameConfig("config.json");
+    // Initialize configuration
+    std::shared_ptr<GameConfig> config = std::make_shared<GameConfig>("config.json");
+
+    // Parse RTP headers
+    const std::vector<std::string>& rtpHeaders = config->getRTPHeaders();
+
+    // Parse feature names
+   // const std::vector<std::string>& featureNames = config->getFeatureNames();
+
+    // Initialize symbol structure
+    SymbolStructure symbolStructure = config->parseSymbolStructure();
+
+    //get gameInfo
+    std::vector<std::string> gameInfo = config->getGameInfo();
+    const double costPerSpin = config->parseVar<double>("cost");
+
+    long long numberOfSpins = 100000LL; //logging: 100000 
+
+
+
+    std::string outputFileBase = gameInfo[0] + "_RTP" + gameInfo[1] + "_" + gameInfo[2];
     std::string outputFileName = outputFileBase + "_output.txt";
     std::string randomLogFileName = outputFileBase + "_randomLog.txt";
     std::string gameDetailsFileName = outputFileBase + "_gameDetails.txt";
 
+    Stats finalStats(symbolStructure, rtpHeaders, costPerSpin);
 
-    GameInstance fullInstance(gameConfig, numberOfSpins);
-    Stats aggregatedStats(gameConfig, numberOfSpins); // Initialize with default or appropriate config
-
-    vector<double> RTPVector(gameConfig.payHeaders.size(), 0);
-    vector<double> payVector(gameConfig.payHeaders.size(), 0);
 
 
     // Open output file
@@ -228,30 +91,44 @@ int main() {
         return 1;  // Exit if there was an error initializing logging or replay mode
     }
 
-
-
-
     // Depending on the selected mode, execute the corresponding simulation
-   
     if (simulationMode == RANDOM_MODE) { // Simulate number of spins
-        
-        int numThreads = 1;
-        std::vector<std::future<Stats>> futures;
+
+        int numThreads;
+        if (logMode == NO_LOGGING)
+            numThreads = 25; //25
+        else
+            numThreads = 1;
+
+        double numSpinsPerThread = (double)numberOfSpins / numThreads;
+
+        // Create threads and per-thread stats
+        std::vector<std::thread> threads;
+        std::vector<std::shared_ptr<Stats>> threadStats;
 
         for (int i = 0; i < numThreads; ++i) {
-            std::promise<Stats> promiseObj;
-            futures.push_back(promiseObj.get_future());
-            std::thread(threadFunction, std::move(promiseObj), gameConfig, (double)numberOfSpins / numThreads).detach(); // Start thread
+            auto stats = std::make_shared<Stats>(symbolStructure, rtpHeaders, costPerSpin);
+            stats->setNumIterations(numSpinsPerThread); // Set the number of iterations for each thread
+            threadStats.emplace_back(stats);
+            threads.emplace_back([config, &symbolStructure, &threadStats, i, numSpinsPerThread]() {
+                GameInstance instance(config, symbolStructure, *threadStats[i]);
+                instance.playBaseGame(numSpinsPerThread);
+                });
         }
 
-
-        for (auto& fut : futures) {
-            Stats threadStats = fut.get(); // Retrieve Stats from each thread
-            aggregatedStats.aggregate(threadStats); // Aggregate into final Stats
+        // Join threads
+        for (auto& t : threads) {
+            t.join();
         }
 
-        // After all threads complete and results are aggregated, calculate standard deviations.
-        aggregatedStats.calculateStandardDeviations();
+        // Aggregate stats
+        for (const auto& s : threadStats) {
+            finalStats.aggregate(*s); // Dereference the shared_ptr to pass the Stats object
+        }
+        finalStats.calculateStandardDeviations();
+        finalStats.outputData(outputFile);
+        finalStats.printFrequencyTables();
+
     }
     else if (simulationMode == PLAYER_MODE) {
         int N = 10000; // Number of players 100000
@@ -260,7 +137,12 @@ int main() {
         int successfulPlayers = 0;
 
         for (int i = 0; i < N; ++i) {
-            PlayerSimulation sim(X, Y, gameConfig);
+            // Initialize Stats for each player (if stats aggregation is not needed across players)
+            Stats stats(symbolStructure, rtpHeaders, costPerSpin);
+
+            // Initialize PlayerSimulation with the shared config, symbolStructure, and unique Stats instance
+            PlayerSimulation sim(X, Y, config, symbolStructure, stats);
+
             if (sim.simulate()) {
                 successfulPlayers++;
             }
@@ -270,18 +152,63 @@ int main() {
         cout << "Percentage of players reaching target credits: " << successPercentage << "%\n";
         return 0;
     }
-    else {
+    else if (simulationMode == CSV_MODE) {
+        std::string userGameVersion;
+        std::cout << "Enter the game version : ";
+        std::getline(std::cin, userGameVersion);
+
+        const long long defaultSpins = 1000000LL;
+        std::string csvFileName = outputFileBase + "_simulation.csv";
+
+        std::ostringstream csvData;
+        csvData << "GAME NAME: " << gameInfo[0] << "\n";
+        csvData << "GAME VERSION: " << userGameVersion << "\n\n";
+        csvData << "RTP SIMULATION RESULTS\n\n";
+        csvData << "PLAYER 1 RTP SIMULATION RESULTS\n";
+        csvData << "SPINID,TOTAL STAKE,BALANCE,BASE GAME,FREE SPINS,TOTALWIN,TOTAL WINS,REELSET_ID\n";
+
+        long long totalWager = 0;
+        double balance = 500.0, totalWins = 0.0; // Starting balance
+
+        for (long long i = 0; i < defaultSpins; ++i) {
+            double spinWin = 0.0, freeSpinWin = 0.0, baseGameWin = 0.0, modCost = (costPerSpin / 100);
+            int reelsetId = -1; // You'll need a real getter here
+
+
+            Stats stats(symbolStructure, rtpHeaders, costPerSpin);
+            GameInstance gameInstance(config, symbolStructure, stats);
+
+            gameInstance.playBaseGame(1); // Simulate a single spin
+
+            spinWin = stats.getLastSpinPayout() / 100;
+            freeSpinWin = stats.getFreeSpinPayout() / 100;
+            baseGameWin = spinWin - freeSpinWin;
+            totalWins += spinWin;
+
+            // Assuming GameInstance has a method to get reelset ID
+            reelsetId = gameInstance.getLastReelSetID(); // <-- implement this if not present
+
+            totalWager += modCost;
+            balance += spinWin - modCost;
+
+            csvData << i << ',' << (i + 1) * modCost << ',' << std::fixed << std::setprecision(2) << balance << ','
+                << baseGameWin << ',' << freeSpinWin << ',' << spinWin << ',' << totalWins << ',' << reelsetId << '\n';
+        }
+
+        std::ofstream csvFile(csvFileName);
+        if (!csvFile.is_open()) {
+            std::cerr << "Failed to open CSV output file: " << csvFileName << std::endl;
+            return 1;
+        }
+        csvFile << csvData.str();
+        csvFile.close();
+
+        std::cout << "CSV simulation completed. Output file: " << csvFileName << std::endl;
+    }  else {
         cerr << "Invalid simulation mode" << endl;
         return 1;
     }
 
-
-    outputData(outputFile, aggregatedStats);
-
-    // Print each frequency table to its file
-    for (size_t i = 0; i < aggregatedStats.payFrequencies.size(); ++i) {
-        printFrequencyTableToFile(aggregatedStats.payHeaders[i], aggregatedStats.payFrequencies[i]);
-    }
 
 
     // Stop the timer
