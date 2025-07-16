@@ -14,6 +14,7 @@ private:
 	// Game parameters
 	int numRows;
 	int numReels;
+	vector<PrizeDistribution<int>> reelHeightPD;
 	int cost;
 	std::vector<std::string> symbols;
 	std::map<std::string, std::vector<int>> paytable;
@@ -36,6 +37,7 @@ private:
 
 	enum PayIdx {
 		BASE = 0,
+		TUMBLE,
 		FREE_TOTAL,
 		TOTAL
 	};
@@ -43,8 +45,9 @@ private:
 	void initializeGame() {
 		{
 			rtpKey = config->parseVar<std::string>("RTP");
-			numRows = config->parseVar<int>("rows");
+			//numRows = config->parseVar<int>("rows");
 			numReels = config->parseVar<int>("reels");
+			reelHeightPD = config->parsePDVec<int>("reelHeights");
 			payHeaders = config->getRTPHeaders();
 			symbolStructure = config->parseSymbolStructure();
 			allReelSets = config->parseAllReelSets();
@@ -56,7 +59,7 @@ private:
 			cost = config->parseVar<int>("cost");
 			symbols = symbolStructure.getSymbols();
 			paytable = symbolStructure.getPaytable();
-			screen.resize(numReels, numRows);
+			//screen.resize(reelHeights);
 
 		}
 
@@ -91,7 +94,11 @@ public:
 
 			RandomLogGenerator::startRound();
 			std::vector<double> pays(payHeaders.size(), 0); // You can adjust the size based on your needs
-			screen.clearScreen();
+			std::vector<int> reelHeights(numReels); 
+			for (int r = 0; r < numReels; ++r) {
+				reelHeights[r] = reelHeightPD[r].getRandomPrize();
+			}
+			screen.resize(reelHeights);
 
 			int reelID = ReelsPD.getRandomPrize();
 			lastReelSetID = reelID;
@@ -115,13 +122,14 @@ public:
 			//};
 			//screen.fillScreen(forceScreen);
 
-			baseVector = handleCascades(screen, baseReelSet, tumbleReelSet, true, true);
+			baseVector = handleCascades(screen, activeReels, activeReels, true, true);
 			// sum baseVector
 			basePay = baseVector[0] + baseVector[1]; // Initial win + tumble win
 			if (basePay)
-				stats.trackFeatureActivation("Line Win");
+				stats.trackFeatureActivation("Base Win");
 
-			pays[BASE] += basePay;
+			pays[BASE] += baseVector[0];
+			pays[TUMBLE] += baseVector[1];
 
 			int fgCount = screen.countSymbolOnScreen("F1", false);
 			if (fgCount == 3) {

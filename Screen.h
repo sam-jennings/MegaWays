@@ -14,7 +14,8 @@ using json = nlohmann::json;
 class Screen {
 private:
     int numReels;
-    int numRows;
+    int maxHeight;
+    std::vector<int> heights;
     vector<vector<std::string>> grid;
     
 
@@ -24,31 +25,55 @@ public:
     // Default constructor
     Screen() {}
 
-    // Constructor to initialize the screen with the specified number of reels and rows
-    Screen(int _numReels, int _numRows) : numReels(_numReels), numRows(_numRows) {
-        // Initialize the grid with placeholders
-        grid.resize(numReels, vector<std::string>(numRows, ""));
-    }
-
-    void resize(int _numReels, int _numRows) {
-        // Resize the outer vector to have _numReels elements
-        grid.resize(_numReels);
-
-        // Resize each inner vector to have _numRows elements
+    // Constructor for screen with equal rows
+    Screen(int _numReels, int _numRows) : numReels(_numReels), maxHeight(_numRows) {
+        heights.reserve(_numReels);
         for (int i = 0; i < _numReels; ++i) {
-            grid[i].resize(_numRows, ""); // Ensure all new elements are initialized to empty strings
-        }
-
-        // Update the dimensions
-        numReels = _numReels;
-        numRows = _numRows;
+			heights.push_back(_numRows); // Initialize all reels with the same height
+		}
+        // Initialize the grid with placeholders
+        resize(heights);
     }
+
+    // Constructor for screen with variable heights
+    Screen(const std::vector<int>& _heights) : numReels(_heights.size()), heights(_heights) {
+        resize(heights);
+	}
+
+    // Resize the screen based on fixed number of rows
+    void resize(int _numReels, int _numRows) {
+		numReels = _numReels;
+		maxHeight = _numRows;
+		heights.resize(numReels, _numRows); // Initialize all reels with the same height
+		grid.resize(numReels, vector<string>(_numRows, "")); // Initialize the grid with empty strings
+	}
+
+    // Resize the screen with variable heights
+    void resize(std::vector<int> heights) {
+        grid.resize(heights.size());
+        maxHeight = 0;
+        // Resize each inner vector to have _numRows elements
+        for (int i = 0; i < numReels; ++i) {
+            if (heights[i] > maxHeight) {
+				maxHeight = heights[i]; // Update maxHeight if the current reel's height is greater
+			}
+            grid[i].resize(heights[i], ""); // Ensure all new elements are initialized to empty strings
+        }
+    }
+
+    void setReelHeight(int r, int h) { heights[r] = h; grid[r].resize(h); }
+
+    int getReelHeight(int r) const { return heights[r]; }
 
 
     void display(bool displayMarkedPositions = false) {
         cout << "Current Screen:" << endl;
-        for (int i = 0; i < numRows; ++i) {
+        for (int i = 0; i < maxHeight; ++i) {
             for (int j = 0; j < numReels; ++j) {
+                if (i >= heights[j]) {
+					cout << setw(5) << "     "; // Print empty space for reels that are shorter than the current row
+					continue;
+				}
                 if (displayMarkedPositions) {
                     bool marked = false;
                     for (const auto& pos : markedPositions) {
@@ -75,7 +100,7 @@ public:
 
     // Function to update a cell in the screen with a new symbol
     void updateCell(int reel, int row, const std::string& symbol) {
-        if (row >= 0 && row < numRows && reel >= 0 && reel < numReels) {
+        if (row >= 0 && row < heights[reel] && reel >= 0 && reel < numReels) {
             grid[reel][row] = symbol;
         }
     }
@@ -83,7 +108,7 @@ public:
     // Function to clear the screen
     void clearScreen() {
         for (int i = 0; i < numReels; ++i) {
-            for (int j = 0; j < numRows; ++j) {
+            for (int j = 0; j < heights[i]; ++j) {
                 grid[i][j] = "";
             }
         }
@@ -96,7 +121,7 @@ public:
 
         // Fill the screen with symbols from spinResults
         for (int i = 0; i < min(numReels, (int)spinResults[i].size()); ++i) { 
-            for (int j = 0; j < min(numRows, (int)spinResults.size()); ++j) {
+            for (int j = 0; j < min(heights[i], (int)spinResults.size()); ++j) {
                 grid[i][j] = spinResults[i][j];
             }
         }
@@ -106,7 +131,7 @@ public:
     void generateScreen(ReelSet& reelSet) {
         clearScreen();
         for (int reelIndex = 0; reelIndex < numReels; ++reelIndex) {
-            for (int rowIndex = 0; rowIndex < numRows; ++rowIndex) {
+            for (int rowIndex = 0; rowIndex < heights[reelIndex]; ++rowIndex) {
                 int currentIndex = (reelSet.currentIndices[reelIndex] + rowIndex) % reelSet.reels[reelIndex].symbols.size();
                 updateCell(reelIndex, rowIndex, reelSet.reels[reelIndex].symbols[currentIndex]);
             }
@@ -121,7 +146,7 @@ public:
             return 0;
         }
         int count = 0;
-        for (int i = 0; i < numRows; ++i) {
+        for (int i = 0; i < heights[reelIndex]; ++i) {
             if (includeWild) {
                 if (grid[reelIndex][i] == symbol || grid[reelIndex][i] == "WL") {
                     ++count;
@@ -171,9 +196,13 @@ public:
         json screenJson;
 
         // Convert the grid into a JSON array of arrays
-        for (int i = 0; i < numRows; ++i) {
+        for (int i = 0; i < maxHeight; ++i) {
             json rowJson = json::array();
             for (int j = 0; j < numReels; ++j) {
+                if (i >= heights[j]) {
+					rowJson.push_back(" "); // Might need to change spacing
+					//continue;
+				} else
                 rowJson.push_back(grid[j][i]);
             }
             screenJson.push_back(rowJson);
@@ -186,7 +215,7 @@ public:
         ReelSet& activeReelSet = useDifferentReelSet ? alternateReelSet : reelSet;
 
         for (int reel = 0; reel < numReels; ++reel) {
-            for (int row = numRows - 1; row >= 0; --row) {
+            for (int row = heights[reel] - 1; row >= 0; --row) {
                 while (grid[reel][row] == "") {
                     // Shift symbols above down to fill this empty position
                     for (int aboveRow = row; aboveRow > 0; aboveRow--) {
@@ -221,7 +250,7 @@ public:
     // Mark given symbol up to length on the screen. includeWild as parameter
     void markSymbol(const string& symbol, int length, bool includeWild = true) {        
         for (int i = 0; i < length; ++i) {
-            for (int j = 0; j < numRows; ++j) {
+            for (int j = 0; j < heights[i]; ++j) {
                 if (grid[i][j] == symbol || (includeWild && grid[i][j] == "WL")) {
                     markedPositions.push_back(make_pair(i, j));
                 }

@@ -38,7 +38,7 @@ enum SimulationMode {
 };
 
 LogMode logMode = NO_LOGGING; // NO_LOGGING, LOGGING, REPLAY
-SimulationMode simulationMode = CSV_MODE; // RANDOM_MODE;
+SimulationMode simulationMode = RANDOM_MODE; // RANDOM_MODE;
 
 
 
@@ -64,7 +64,7 @@ int main() {
     std::vector<std::string> gameInfo = config->getGameInfo();
     const double costPerSpin = config->parseVar<double>("cost");
 
-    long long numberOfSpins = 100000LL; //logging: 100000 
+    long long numberOfSpins = 10000000LL; //logging: 100000 
 
 
 
@@ -96,7 +96,7 @@ int main() {
 
         int numThreads;
         if (logMode == NO_LOGGING)
-            numThreads = 25; //25
+            numThreads = 8; //25
         else
             numThreads = 1;
 
