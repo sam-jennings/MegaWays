@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <string>
 #include <vector>
@@ -17,6 +17,10 @@ private:
     int maxHeight;
     std::vector<int> heights;
     vector<vector<std::string>> grid;
+	// For over/under reels
+    static constexpr int SIDE_LEN = 4;          // middle-four reels
+    std::array<std::string, SIDE_LEN> overRow{}; // index 0 ⟶ reel 1, 3 ⟶ reel 4
+    std::array<std::string, SIDE_LEN> underRow{}; 
     
 
 public:
@@ -40,6 +44,32 @@ public:
         resize(heights);
 	}
 
+
+    // For over/under reels
+    inline bool middleReel(int reel) const { return reel >= 1 && reel <= 4; }
+
+    inline bool match(const std::string& symbol, const std::string& target, bool includeWild = true) const {
+        if (includeWild && (symbol == target || symbol == "WL")) return true;
+        return symbol == target;
+	}
+
+    void setSideSymbol(bool over, int idx, const std::string& s) {
+        (over ? overRow : underRow)[idx] = s;
+    }
+
+    std::string getSideSymbol(bool over, int idx) const {
+        return (over ? overRow : underRow)[idx];
+    }
+
+    // add symbols to over/under reels from ReelSet
+    void addSideSymbols(bool over, const ReelSet& reelSet) {
+        auto& strip = reelSet.reels[0].symbols;
+        for (int i = 0; i < SIDE_LEN; ++i) {
+                setSideSymbol(over, i, strip[(reelSet.currentIndices[0] + i) % strip.size()]);
+        }
+	}
+
+
     // Resize the screen based on fixed number of rows
     void resize(int _numReels, int _numRows) {
 		numReels = _numReels;
@@ -49,8 +79,10 @@ public:
 	}
 
     // Resize the screen with variable heights
-    void resize(std::vector<int> heights) {
-        grid.resize(heights.size());
+    void resize(std::vector<int> newH) {
+		heights = newH; // Update the heights vector with the new heights
+		numReels = heights.size(); // Update the number of reels based on the new heights
+        grid.resize(numReels);
         maxHeight = 0;
         // Resize each inner vector to have _numRows elements
         for (int i = 0; i < numReels; ++i) {
@@ -114,18 +146,18 @@ public:
         }
     }
 
-    // Function to fill the screen with symbols from spinning reel sets
-    void fillScreen(const vector<vector<string>>& spinResults) {
-        // Clear the screen
-        clearScreen();
+    //// Function to fill the screen with symbols from spinning reel sets
+    //void fillScreen(const vector<vector<string>>& spinResults) {
+    //    // Clear the screen
+    //    clearScreen();
 
-        // Fill the screen with symbols from spinResults
-        for (int i = 0; i < min(numReels, (int)spinResults[i].size()); ++i) { 
-            for (int j = 0; j < min(heights[i], (int)spinResults.size()); ++j) {
-                grid[i][j] = spinResults[i][j];
-            }
-        }
-    }
+    //    // Fill the screen with symbols from spinResults
+    //    for (int i = 0; i < min(numReels, (int)spinResults[i].size()); ++i) { 
+    //        for (int j = 0; j < min(heights[i], (int)spinResults.size()); ++j) {
+    //            grid[i][j] = spinResults[i][j];
+    //        }
+    //    }
+    //}
 
     // Method to generate the screen based on the chosen indices for spinning the reels
     void generateScreen(ReelSet& reelSet) {
@@ -146,17 +178,26 @@ public:
             return 0;
         }
         int count = 0;
-        for (int i = 0; i < heights[reelIndex]; ++i) {
-            if (includeWild) {
-                if (grid[reelIndex][i] == symbol || grid[reelIndex][i] == "WL") {
-                    ++count;
-                }
-            }
-            else {
-                if (grid[reelIndex][i] == symbol) {
-                    ++count;
-                }
-            }
+        //for (int i = 0; i < heights[reelIndex]; ++i) {
+        //    if (includeWild) {
+        //        if (grid[reelIndex][i] == symbol || grid[reelIndex][i] == "WL") {
+        //            ++count;
+        //        }
+        //    }
+        //    else {
+        //        if (grid[reelIndex][i] == symbol) {
+        //            ++count;
+        //        }
+        //    }
+        //}
+        // 1) vertical column
+        for (int row = 0; row < heights[reelIndex]; ++row) {
+            if (match(grid[reelIndex][row], symbol, includeWild)) ++count;
+        }
+        // 2) side rows
+        if (middleReel(reelIndex)) {
+            if (match(overRow[reelIndex - 1], symbol, includeWild)) ++count;
+            if (match(underRow[reelIndex - 1], symbol, includeWild)) ++count; // future-proof
         }
         return count;
     }
@@ -211,6 +252,32 @@ public:
         return screenJson;
     }
 
+    void cascadeSideRow(bool over,
+        ReelSet& rs)           // current strip index
+    {
+		std::array<std::string, 4>& row = over ? overRow : underRow;
+		int idx = rs.currentIndices[0]; // current strip index
+
+        for (int pos = 0; pos <= 3; ++pos) {
+            while (row[pos].empty()) {
+                // shift symbols to the left
+                for (int p = pos; p < 3; ++p) row[p] = row[p + 1];
+
+                if (++idx >= rs.reels[0].symbols.size()) idx = 0;
+                row[3] = rs.reels[0].symbols[idx];
+            }
+        }
+    }
+
+    //for (int pos = 3; pos >= 0; --pos) {
+    //    while (row[pos].empty()) {
+    //        for (int p = pos; p > 0; --p) row[p] = row[p - 1];
+    //        idx = (idx - 1 + strip.size()) % strip.size();
+    //        row[0] = strip[idx];
+    //    }
+    //}
+    //rs.currentIndices[0] = idx;        // persist
+
     void cascadeSymbols(ReelSet& reelSet, bool useDifferentReelSet, ReelSet& alternateReelSet) {
         ReelSet& activeReelSet = useDifferentReelSet ? alternateReelSet : reelSet;
 
@@ -234,6 +301,7 @@ public:
     }
    
 
+
     void markPosition(int reel, int row) {
 		markedPositions.push_back(make_pair(reel, row));
 	}
@@ -255,6 +323,12 @@ public:
                     markedPositions.push_back(make_pair(i, j));
                 }
             }
+            if (middleReel(i)) {
+                if (getSideSymbol(true, i - 1) == symbol || (includeWild && getSideSymbol(true, i - 1) == "WL"))
+                    markedPositions.emplace_back(i, -1);            // -1  = overRow
+                if (getSideSymbol(false, i - 1) == symbol || (includeWild && getSideSymbol(false, i - 1) == "WL"))
+                    markedPositions.emplace_back(i, -2);    // underRow sentinel
+            }
         }
     }
 
@@ -262,9 +336,17 @@ public:
         for (const auto& position : markedPositions) {
             int reel = position.first;
             int row = position.second;
-            grid[reel][row] = "";  // Clear the winning symbol
+            if (row >= 0 && row < heights[reel]) {
+                grid[reel][row] = "";  // Clear the winning symbol in the grid
+            } else if (middleReel(reel)) {
+                if (row == -1) {
+                    overRow[reel - 1] = ""; // Remove symbol from overRow
+                } else if (row == -2) {
+                    underRow[reel - 1] = ""; // Remove symbol from underRow
+                }
+            }
         }
-	}
+    }
 
     // Function to fill all marked symbols with a specified symbol
     void fillMarkedSymbols(const string& symbol) {

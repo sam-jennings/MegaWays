@@ -21,7 +21,7 @@ private:
 	std::vector<std::string> payHeaders;
 
 	// ReelSets
-	ReelSet baseReelSet, tumbleReelSet, noWinReelSet;
+	ReelSet baseReelSet, tumbleReelSet, noWinReelSet, overReelSet, underReelSet;
 	std::unordered_map<std::string, ReelSet> allReelSets;
 	std::vector<int> reelWeights;
 	PrizeDistribution<int> ReelsPD;
@@ -100,6 +100,9 @@ public:
 			}
 			screen.resize(reelHeights);
 
+			overReelSet = allReelSets["over"];
+			underReelSet = allReelSets["under"];
+
 			int reelID = ReelsPD.getRandomPrize();
 			lastReelSetID = reelID;
 			switch (reelID) {
@@ -111,7 +114,12 @@ public:
 				break;
 			}
 			activeReels.spinReels();
+			overReelSet.spinReels();
+			underReelSet.spinReels();
+
 			screen.generateScreen(activeReels);
+			screen.addSideSymbols(true, overReelSet);
+			//screen.addSideSymbols(false, underReelSet);
 
 			//vector<vector<string>> forceScreen = {
 			//	{"R1", "WL", "R1"},
@@ -122,7 +130,8 @@ public:
 			//};
 			//screen.fillScreen(forceScreen);
 
-			baseVector = handleCascades(screen, activeReels, activeReels, true, true);
+			baseVector = handleCascades(screen, activeReels, activeReels, false, true);
+			//baseVector = handleCascades(screen, activeReels, activeReels, true, true);
 			// sum baseVector
 			basePay = baseVector[0] + baseVector[1]; // Initial win + tumble win
 			if (basePay)
@@ -158,10 +167,10 @@ public:
 		ReelSet freeReelSet;
 
 		if (getRand("R-WTS", reelWeights[0] + reelWeights[1]) < reelWeights[0]) {
-			freeReelSet = allReelSets["freeLow"];
+			freeReelSet = allReelSets["baseLow"];
 		}
 		else {
-			freeReelSet = allReelSets["freeHigh"];
+			freeReelSet = allReelSets["baseHigh"];
 		}
 
 
@@ -216,6 +225,8 @@ public:
 				tumbleCount++;
 				screen.removeMarkedPositions();  // Remove the symbols at winning positions        
 				screen.cascadeSymbols(reelSet, useDifferentReelSet, offScreenReelSet);  // Cascade new symbols down
+				screen.cascadeSideRow(true, overReelSet); // Cascade over row
+				screen.cascadeSideRow(false, underReelSet); // Cascade under row
 
 			}
 		} while (hasNewWins);

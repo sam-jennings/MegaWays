@@ -64,7 +64,7 @@ int main() {
     std::vector<std::string> gameInfo = config->getGameInfo();
     const double costPerSpin = config->parseVar<double>("cost");
 
-    long long numberOfSpins = 10000000LL; //logging: 100000 
+    long long numberOfSpins = 1000000LL; //logging: 100000 
 
 
 
@@ -96,7 +96,7 @@ int main() {
 
         int numThreads;
         if (logMode == NO_LOGGING)
-            numThreads = 8; //25
+            numThreads = 1; //25
         else
             numThreads = 1;
 
