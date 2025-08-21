@@ -103,7 +103,8 @@ public:
 			overReelSet = allReelSets["over"];
 			underReelSet = allReelSets["under"];
 
-			int reelID = ReelsPD.getRandomPrize();
+			int reelID = 1;
+			//int reelID = ReelsPD.getRandomPrize();
 			lastReelSetID = reelID;
 			switch (reelID) {
 			case 0:
@@ -115,7 +116,7 @@ public:
 			}
 			activeReels.spinReels();
 			overReelSet.spinReels();
-			underReelSet.spinReels();
+		//	underReelSet.spinReels();
 
 			screen.generateScreen(activeReels);
 			screen.addSideSymbols(true, overReelSet);
@@ -265,7 +266,7 @@ public:
 		}
 
 
-		//RandomLogGenerator::addWinAmount(totalPay);
+		RandomLogGenerator::addWinAmount(totalPay);
 		return totalPay;
 	}
 

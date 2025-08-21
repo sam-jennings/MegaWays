@@ -6,7 +6,7 @@
 
   "rows": 3,
   "reels": 6,
-  "payHeaders": ["Base", "Tumbles", "Wild Win", "Expanded Win", "Free Spins", "JP Prize", "Total", "Free Base", "Free Tumbles", "Free WW", "Free EW", "Free JP"],
+  "payHeaders": ["Base", "Tumbles","Free Spins", "Total"],
   "cost" : 20,
   "reel_sets": [
     {

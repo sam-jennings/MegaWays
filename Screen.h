@@ -62,12 +62,11 @@ public:
     }
 
     // add symbols to over/under reels from ReelSet
-    void addSideSymbols(bool over, const ReelSet& reelSet) {
-        auto& strip = reelSet.reels[0].symbols;
-        for (int i = 0; i < SIDE_LEN; ++i) {
-                setSideSymbol(over, i, strip[(reelSet.currentIndices[0] + i) % strip.size()]);
-        }
-	}
+    void addSideSymbols(bool over, const ReelSet& rs) {
+        const auto& strip = rs.reels[0].symbols;
+        for (int i = 0; i < SIDE_LEN; ++i)
+            setSideSymbol(over, i, strip[(rs.currentIndices[0] + i) % strip.size()]);
+    }
 
 
     // Resize the screen based on fixed number of rows
@@ -252,31 +251,35 @@ public:
         return screenJson;
     }
 
-    void cascadeSideRow(bool over,
-        ReelSet& rs)           // current strip index
+    void cascadeSideRow(bool over, ReelSet& rs)
     {
-		std::array<std::string, 4>& row = over ? overRow : underRow;
-		int idx = rs.currentIndices[0]; // current strip index
+        auto& row = over ? overRow : underRow;
+        const auto& strip = rs.reels[0].symbols;
+        const int N = static_cast<int>(strip.size());
+        if (N == 0) return;
 
-        for (int pos = 0; pos <= 3; ++pos) {
+        // left = index for row[0]; next = symbol immediately AFTER the rightmost
+        int left = rs.currentIndices[0];
+        int next = (left + SIDE_LEN) % N;      // <-- start AFTER the visible window
+
+        for (int pos = 0; pos < SIDE_LEN; ++pos) {
             while (row[pos].empty()) {
-                // shift symbols to the left
-                for (int p = pos; p < 3; ++p) row[p] = row[p + 1];
+                // shift visible window one step LEFT
+                for (int p = pos; p < SIDE_LEN - 1; ++p)
+                    row[p] = row[p + 1];
 
-                if (++idx >= rs.reels[0].symbols.size()) idx = 0;
-                row[3] = rs.reels[0].symbols[idx];
+                // bring the next symbol in on the RIGHT
+                row[SIDE_LEN - 1] = strip[next];
+
+                // the window advanced by one:
+                left = (left + 1) % N;
+                next = (next + 1) % N;
             }
         }
+        rs.currentIndices[0] = left;           // <-- persist new leftmost index
     }
 
-    //for (int pos = 3; pos >= 0; --pos) {
-    //    while (row[pos].empty()) {
-    //        for (int p = pos; p > 0; --p) row[p] = row[p - 1];
-    //        idx = (idx - 1 + strip.size()) % strip.size();
-    //        row[0] = strip[idx];
-    //    }
-    //}
-    //rs.currentIndices[0] = idx;        // persist
+
 
     void cascadeSymbols(ReelSet& reelSet, bool useDifferentReelSet, ReelSet& alternateReelSet) {
         ReelSet& activeReelSet = useDifferentReelSet ? alternateReelSet : reelSet;
