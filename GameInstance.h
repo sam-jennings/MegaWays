@@ -96,7 +96,8 @@ public:
 			std::vector<double> pays(payHeaders.size(), 0); // You can adjust the size based on your needs
 			std::vector<int> reelHeights(numReels); 
 			for (int r = 0; r < numReels; ++r) {
-				reelHeights[r] = reelHeightPD[r].getRandomPrize();
+				//reelHeights[r] = reelHeightPD[r].getRandomPrize();
+				reelHeights[r] = 4;
 			}
 			screen.resize(reelHeights);
 
