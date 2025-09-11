@@ -232,8 +232,18 @@ public:
     }
 
    
-    json toJson() const {
+    json toJson(bool includeOver = false, bool includeUnder = false) const {
         json screenJson;
+
+        if (includeOver) {
+            json overJson = json::array();
+            overJson.push_back(" ");
+            for (int i = 0; i < SIDE_LEN; ++i) {
+                overJson.push_back(overRow[i]);
+            }
+            overJson.push_back(" ");
+            screenJson.push_back(overJson);
+		}
 
         // Convert the grid into a JSON array of arrays
         for (int i = 0; i < maxHeight; ++i) {
@@ -246,6 +256,15 @@ public:
                 rowJson.push_back(grid[j][i]);
             }
             screenJson.push_back(rowJson);
+        }
+        if (includeUnder) {
+            json underJson = json::array();
+            underJson.push_back(" ");
+            for (int i = 0; i < SIDE_LEN; ++i) {
+                underJson.push_back(underRow[i]);
+            }
+            underJson.push_back(" ");
+            screenJson.push_back(underJson);
         }
 
         return screenJson;

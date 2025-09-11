@@ -245,7 +245,7 @@ public:
 		int multiplier = 1;
 
 
-		RandomLogGenerator::addScreen(screen.toJson());
+		RandomLogGenerator::addScreen(screen.toJson(true, false));  // update when adding underrow
 		// Clear previous marked positions
 		screen.clearMarkedPositions();
 
