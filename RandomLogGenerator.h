@@ -147,19 +147,18 @@ bool RandomLogGenerator::handleLoggingMode(LogMode mode, const std::string& rand
     logMode = mode;
     instructionIndex = 0;
 
-    // Handle LOGGING mode
     if (logMode == LOGGING) {
         openLogs(randomLogFileName, gameDetailsFileName);
         return true;
     }
 
-    // Handle REPLAY mode
     if (logMode == REPLAY) {
         readAndParseLog(randomLogFileName);  // Read the log file for replay
+        // Open only the gameDetailsFile for writing in REPLAY mode
+        gameDetailsFile.open(gameDetailsFileName);
         return !randomLogInstructions.empty();
     }
 
-    // Handle NO_LOGGING mode
     if (logMode == NO_LOGGING) {
         return false;  // No logging or replay, just execute normally
     }
@@ -167,10 +166,9 @@ bool RandomLogGenerator::handleLoggingMode(LogMode mode, const std::string& rand
     return false;
 }
 
-
 // Start a new round
 void RandomLogGenerator::startRound() {
-    if (logMode == (LOGGING || REPLAY)) {
+    if (logMode == LOGGING || logMode == REPLAY) {
         currentRandoms.clear();
         roundScreens.clear();
         roundScales.clear();
@@ -188,13 +186,15 @@ void RandomLogGenerator::startRound() {
 
 
 void RandomLogGenerator::endRound() {
-    if (logMode != LOGGING) return;
+    if (logMode == LOGGING) return;
     
     endSpin();  // Finalize the last spin
 
-    // Log the total round win to the random log (cap the win if maxRoundWin is hit)
-    double totalWin = maxWinTriggered ? maxRoundWin : currentRoundTotalWin;
-    randomLogFile << "#" << std::fixed << std::setprecision(2) << totalWin / 100 << std::endl;
+    if (logMode == LOGGING) {
+        // Log the total round win to the random log (cap the win if maxRoundWin is hit)
+        double totalWin = maxWinTriggered ? maxRoundWin : currentRoundTotalWin;
+        randomLogFile << "#" << std::fixed << std::setprecision(2) << totalWin / 100 << std::endl;
+    }
 
     // Log the game details (screen state) to gameDetails.txt
     gameDetailsFile << "{" << std::endl;
@@ -238,7 +238,7 @@ void RandomLogGenerator::endRound() {
 
 // Start a new spin
 void RandomLogGenerator::startSpin() {
-    if (logMode != (LOGGING || REPLAY)) return;
+    if (logMode == NO_LOGGING) return;
     currentRandoms.clear();
     currentSpinTotalWin = 0.0;
     currentSpin++;
@@ -250,33 +250,35 @@ void RandomLogGenerator::startSpin() {
 
 // End the spin and log its data
 bool RandomLogGenerator::endSpin() {
-    if (logMode != (LOGGING || REPLAY)) return true;
+    if (logMode == NO_LOGGING) return true;
 
-    // Log randoms and total win for the spin
-    std::string randomsLine = std::accumulate(currentRandoms.begin(), currentRandoms.end(), std::string(),
-        [](const std::string& a, const std::string& b) -> std::string {
-            return a.empty() ? b : a + "," + b;
-        });
+    if (logMode == LOGGING) {
+        // Log randoms and total win for the spin
+        std::string randomsLine = std::accumulate(currentRandoms.begin(), currentRandoms.end(), std::string(),
+            [](const std::string& a, const std::string& b) -> std::string {
+                return a.empty() ? b : a + "," + b;
+            });
 
-    if (logTumbleWinsIndividually) {
-        // Output only the individual cascade wins.
-        for (double tumbleWin : currentSpinTumbleWins) {
-            std::ostringstream ossTumble;
-            ossTumble << std::fixed << std::setprecision(2) << tumbleWin / 100;
-            randomsLine += ",#" + ossTumble.str();
+        if (logTumbleWinsIndividually) {
+            // Output only the individual cascade wins.
+            for (double tumbleWin : currentSpinTumbleWins) {
+                std::ostringstream ossTumble;
+                ossTumble << std::fixed << std::setprecision(2) << tumbleWin / 100;
+                randomsLine += ",#" + ossTumble.str();
+            }
+            randomsLine += ";";
+            // (Do not append aggregated currentSpinTotalWin)
         }
-        randomsLine += ";";
-        // (Do not append aggregated currentSpinTotalWin)
-    }
-    else {
-        // In aggregated mode, output the overall spin win.
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(2) << currentSpinTotalWin / 100;
-        randomsLine += ",#" + oss.str() + ";";
-    }
+        else {
+            // In aggregated mode, output the overall spin win.
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(2) << currentSpinTotalWin / 100;
+            randomsLine += ",#" + oss.str() + ";";
+        }
 
 
-    randomLogFile << randomsLine;
+        randomLogFile << randomsLine;
+    }
     // Add the spin's win to the total round win
     currentRoundTotalWin += currentSpinTotalWin;
 
@@ -306,21 +308,14 @@ void RandomLogGenerator::addRandom(const RandTriple& randTriple) {
 
 // Add screen state
 void RandomLogGenerator::addScreen(json screen) {
-    if (logMode == LOGGING) {
+    if (logMode != NO_LOGGING) {
         roundScreens[currentSpin - 1].push_back(screen);
-    }
-}
-
-// Add scale state
-void RandomLogGenerator::addScale(json scale) {
-    if (logMode == LOGGING) {
-        roundScales[currentSpin - 1].push_back(scale);
     }
 }
 
 // Add win to the spin total
 void RandomLogGenerator::addWinAmount(double winAmount) {
-    if (logMode == LOGGING) {
+    if (logMode == LOGGING || logMode == REPLAY) {
         if (logTumbleWinsIndividually) {
             // In individual mode, simply add a new entry for this cascade win.
             currentSpinTumbleWins.push_back(winAmount);
@@ -340,24 +335,24 @@ void RandomLogGenerator::addWinAmount(double winAmount) {
 }
 
 // Modify addTumbleWin so that it “accumulates” differently depending on the flag.
-void RandomLogGenerator::addTumbleWin(double winAmount) {
-    if (logTumbleWinsIndividually) {
-        // In individual mode, simply add a new entry for this cascade win.
-        currentSpinTumbleWins.push_back(winAmount);
-    }
-    else {
-        // In aggregated mode, accumulate all wins into one entry.
-        if (currentSpinTumbleWins.empty()) {
-            currentSpinTumbleWins.push_back(winAmount);
-        }
-        else {
-            currentSpinTumbleWins.back() += winAmount;
-        }
-    }
-    // In either case, add the win amount to the overall spin total.
-    currentSpinTotalWin += winAmount;
-
-}
+//void RandomLogGenerator::addTumbleWin(double winAmount) {
+//    if (logTumbleWinsIndividually) {
+//        // In individual mode, simply add a new entry for this cascade win.
+//        currentSpinTumbleWins.push_back(winAmount);
+//    }
+//    else {
+//        // In aggregated mode, accumulate all wins into one entry.
+//        if (currentSpinTumbleWins.empty()) {
+//            currentSpinTumbleWins.push_back(winAmount);
+//        }
+//        else {
+//            currentSpinTumbleWins.back() += winAmount;
+//        }
+//    }
+//    // In either case, add the win amount to the overall spin total.
+//    currentSpinTotalWin += winAmount;
+//
+//}
 
 void RandomLogGenerator::addMultipliers(std::vector<int>& multipliersUsed) {
     if (logMode == LOGGING) {

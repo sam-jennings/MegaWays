@@ -228,7 +228,7 @@ public:
 				screen.removeMarkedPositions();  // Remove the symbols at winning positions        
 				screen.cascadeSymbols(reelSet, useDifferentReelSet, offScreenReelSet);  // Cascade new symbols down
 				screen.cascadeSideRow(true, overReelSet); // Cascade over row
-				screen.cascadeSideRow(false, underReelSet); // Cascade under row
+				//screen.cascadeSideRow(false, underReelSet); // Cascade under row
 
 			}
 		} while (hasNewWins);
@@ -245,7 +245,7 @@ public:
 		int multiplier = 1;
 
 
-		RandomLogGenerator::addScreen(screen.toJson(true, false));  // update when adding underrow
+		RandomLogGenerator::addScreen(screen.toJson(true, true));  // update when adding underrow
 		// Clear previous marked positions
 		screen.clearMarkedPositions();
 
