@@ -96,8 +96,7 @@ public:
 			std::vector<double> pays(payHeaders.size(), 0); // You can adjust the size based on your needs
 			std::vector<int> reelHeights(numReels); 
 			for (int r = 0; r < numReels; ++r) {
-				//reelHeights[r] = reelHeightPD[r].getRandomPrize();
-				reelHeights[r] = 4;
+				reelHeights[r] = reelHeightPD[r].getRandomPrize();
 			}
 			screen.resize(reelHeights);
 
@@ -121,7 +120,7 @@ public:
 
 			screen.generateScreen(activeReels);
 			screen.addSideSymbols(true, overReelSet);
-			//screen.addSideSymbols(false, underReelSet);
+			screen.addSideSymbols(false, underReelSet);
 
 			//vector<vector<string>> forceScreen = {
 			//	{"R1", "WL", "R1"},
@@ -228,7 +227,7 @@ public:
 				screen.removeMarkedPositions();  // Remove the symbols at winning positions        
 				screen.cascadeSymbols(reelSet, useDifferentReelSet, offScreenReelSet);  // Cascade new symbols down
 				screen.cascadeSideRow(true, overReelSet); // Cascade over row
-				//screen.cascadeSideRow(false, underReelSet); // Cascade under row
+				screen.cascadeSideRow(false, underReelSet); // Cascade under row
 
 			}
 		} while (hasNewWins);
