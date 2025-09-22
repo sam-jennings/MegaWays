@@ -33,7 +33,7 @@ private:
 	std::unordered_map<std::string, long long> featureHits;
 	std::vector<std::vector<long long>> baseSymHits;
 	std::vector<std::vector<double>> baseSymPays;
-	std::unordered_map<int, long long> scatterHits, freeSpinsFreq, tumbleFreq;
+	std::unordered_map<int, long long> scatterHits, freeSpinsFreq, tumbleFreq, multFreq;
 	SymbolStructure& symbolStructure;
 	std::vector<double> standardDeviations;
 	int totalWins = 0;
@@ -82,6 +82,11 @@ public:
 	void recordTumbleFrequency(int tumbles) {
 		std::lock_guard<std::mutex> lock(statsMutex);
 		tumbleFreq[tumbles]++;
+	}
+
+	void recordFinalMult(int tumbles) {
+		std::lock_guard<std::mutex> lock(statsMutex);
+		multFreq[tumbles]++;
 	}
 
 	//record number of free spins
@@ -212,6 +217,10 @@ public:
 			tumbleFreq[pair.first] += pair.second;
 		}
 
+		for (const auto& pair : other.multFreq) {
+			multFreq[pair.first] += pair.second;
+		}
+
 		for (const auto& pair : other.freeSpinsFreq) {
 			freeSpinsFreq[pair.first] += pair.second;
 		}
@@ -254,9 +263,6 @@ public:
 
 		// Sort featureHits by name as featureHitsOrdered
 		file << "Feature Hits\n";
-
-
-
 
 		file << "Feature\tHits\tHit Rate\n";
 
@@ -318,7 +324,13 @@ public:
 		}
 		file << "----------------------------------------\n";
 		file << "Average Tumbles: " << '\t' << calculateAverageTumbleFrequency() << '\n';
+		file << "----------------------------------------\n";
 
+		file << "Final Multiplier Frequencies\n";
+		file << "Multiplier\tFrequency\n";
+		for (const auto& pair : multFreq) {
+			file << pair.first << '\t' << pair.second << '\n';
+		}
 		/*
 	file << "Scale Pair Frequencies\n";
 	outputScalePairFrequencies(file);*/

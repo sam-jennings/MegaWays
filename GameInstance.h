@@ -20,6 +20,8 @@ private:
 	std::map<std::string, std::vector<int>> paytable;
 	std::vector<std::string> payHeaders;
 
+	std::vector<std::vector<int>> boostWeights;
+	std::vector<PrizeDistribution<int>> boostPDVec;
 	// ReelSets
 	ReelSet baseReelSet, tumbleReelSet, noWinReelSet, overReelSet, underReelSet;
 	std::unordered_map<std::string, ReelSet> allReelSets;
@@ -48,6 +50,7 @@ private:
 			//numRows = config->parseVar<int>("rows");
 			numReels = config->parseVar<int>("reels");
 			reelHeightPD = config->parsePDVec<int>("reelHeights");
+			boostWeights = config->parseArray<int>("boostWeights");
 			payHeaders = config->getRTPHeaders();
 			symbolStructure = config->parseSymbolStructure();
 			allReelSets = config->parseAllReelSets();
@@ -84,17 +87,24 @@ public:
 
 	void playBaseGame(long long numSpins) {
 		vector<double> baseVector, freeVector;
-
 		double basePay, tempPay;
-
 		ReelSet activeReels;
+
+		int globalMult;
+
+		std::vector<bool> boostVecOver, boostVecUnder;
+		boostPDVec.resize(boostWeights.size());
+		for (int i = 0; i < boostWeights.size(); ++i) {
+			boostPDVec[i] = PrizeDistribution<int>("BS_" + std::to_string(i + 1), std::vector<int>{0, 1}, boostWeights[i]);
+		}
 
 		for (long long i = 0; i < numSpins; ++i) {
 			basePay = 0;
+			globalMult = 1;
 
 			RandomLogGenerator::startRound();
 			std::vector<double> pays(payHeaders.size(), 0); // You can adjust the size based on your needs
-			std::vector<int> reelHeights(numReels); 
+			std::vector<int> reelHeights(numReels);
 			for (int r = 0; r < numReels; ++r) {
 				reelHeights[r] = reelHeightPD[r].getRandomPrize();
 			}
@@ -108,7 +118,7 @@ public:
 			lastReelSetID = reelID;
 			switch (reelID) {
 			case 0:
-				activeReels = allReelSets["baseLow"];				
+				activeReels = allReelSets["baseLow"];
 				break;
 			case 1:
 				activeReels = allReelSets["baseHigh"];
@@ -116,11 +126,19 @@ public:
 			}
 			activeReels.spinReels();
 			overReelSet.spinReels();
-		//	underReelSet.spinReels();
+			underReelSet.spinReels();
+
+			// Determine boost for over/under reels
+			boostVecOver.clear();
+			boostVecUnder.clear();
+			for (int b = 0; b < boostWeights.size(); ++b) {
+				boostVecOver.push_back(boostPDVec[b].getRandomPrize());
+				boostVecUnder.push_back(boostPDVec[b].getRandomPrize());
+			}
 
 			screen.generateScreen(activeReels);
-			screen.addSideSymbols(true, overReelSet);
-			screen.addSideSymbols(false, underReelSet);
+			screen.addSideSymbols(true, overReelSet, boostVecOver);
+			screen.addSideSymbols(false, underReelSet, boostVecUnder);
 
 			//vector<vector<string>> forceScreen = {
 			//	{"R1", "WL", "R1"},
@@ -131,7 +149,7 @@ public:
 			//};
 			//screen.fillScreen(forceScreen);
 
-			baseVector = handleCascades(screen, activeReels, activeReels, false, true);
+			baseVector = handleCascades(screen, activeReels, activeReels, false, true, globalMult);
 			//baseVector = handleCascades(screen, activeReels, activeReels, true, true);
 			// sum baseVector
 			basePay = baseVector[0] + baseVector[1]; // Initial win + tumble win
@@ -142,8 +160,9 @@ public:
 			pays[TUMBLE] += baseVector[1];
 
 			int fgCount = screen.countSymbolOnScreen("F1", false);
-			if (fgCount == 3) {
+			if (fgCount >= 3) {
 				freeVector = playFreeGames(10); // Play 10 free games with no pot
+				stats.trackFeatureActivation("FS Trigger "+ to_string(fgCount));
 				stats.trackFeatureActivation("Free Spins");
 			}
 
@@ -162,7 +181,7 @@ public:
 
 	vector<double> playFreeGames(int numFreeGames) {
 		vector<double> pays(3, 0);
-		vector<double> tempPays;	
+		vector<double> tempPays;
 		int freeSpinsRemaining = numFreeGames;
 
 		ReelSet freeReelSet;
@@ -198,11 +217,26 @@ public:
 		return pays;
 	}
 
-	vector<double> handleCascades(Screen& screen, ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame) {
-		bool hasNewWins;
-		double initialWin = 0, tumbleWin = 0;
-		int tumbleCount = 0;
+	int boostsInWin(const Screen& screen) {
+		int boostCount = 0;
+		const auto& marked = screen.getMarkedPositions();
+		for (const auto& pos : marked) {
+			int reel = pos.first;
+			int row = pos.second;
+			// over side hit
+			if (row == -1 && screen.isSideBoosted(true, reel - 1))
+				boostCount++;
+			// under side hit
+			if (row == -2 && screen.isSideBoosted(false, reel - 1))
+				boostCount++;
+		}
+		return boostCount;
+	}
 
+	vector<double> handleCascades(Screen& screen, ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame, int& globalMult) {
+		bool hasNewWins;
+		double initialWin = 0, tumbleWin = 0, tempWin;
+		int tumbleCount = 0;
 
 		// If we're using a different reel set, spin it once before cascading
 		if (useDifferentReelSet) {
@@ -212,18 +246,27 @@ public:
 		do {
 			hasNewWins = false;
 			screen.clearMarkedPositions(); // Clear previous positions
+			tempWin = 0;
 
 			if (tumbleCount == 0) {
 				initialWin = calculateWaysWins(screen, baseGame);
+				globalMult += boostsInWin(screen);
+				initialWin *= globalMult;
+				RandomLogGenerator::addWinAmount(initialWin);
 			}
 			else {
-				tumbleWin += calculateWaysWins(screen, baseGame);
+				tempWin = calculateWaysWins(screen, baseGame);
+				globalMult += boostsInWin(screen);
+				tempWin *= globalMult;
+				tumbleWin += tempWin;
+				RandomLogGenerator::addWinAmount(tempWin);
 			}
 
 
 			if (!screen.getMarkedPositions().empty()) {
 				hasNewWins = true;
 				tumbleCount++;
+
 				screen.removeMarkedPositions();  // Remove the symbols at winning positions        
 				screen.cascadeSymbols(reelSet, useDifferentReelSet, offScreenReelSet);  // Cascade new symbols down
 				screen.cascadeSideRow(true, overReelSet); // Cascade over row
@@ -234,15 +277,15 @@ public:
 
 		if (initialWin && baseGame) {
 			stats.recordTumbleFrequency(tumbleCount);
+
 		}
+		stats.recordFinalMult(globalMult);
 
 		return { initialWin, tumbleWin };
 	}
 
-	double calculateWaysWins(Screen& screen, bool baseGame) {
+	double calculateWaysWins(Screen& screen, bool baseGame, int currentMult = 1) {
 		double totalPay = 0;
-		int multiplier = 1;
-
 
 		RandomLogGenerator::addScreen(screen.toJson(true, true));  // update when adding underrow
 		// Clear previous marked positions
@@ -255,10 +298,9 @@ public:
 			int payout = 0;
 
 			if (length > 0) {
-				payout = multiplier * ways * paytable[symbol][length - 1];
+				payout = currentMult * ways * paytable[symbol][length - 1];
 				if (payout > 0) {
 					stats.trackResult(symbol, length, ways, payout, baseGame);
-
 					screen.markSymbol(symbol, length);
 				}
 			}
@@ -266,7 +308,7 @@ public:
 		}
 
 
-		RandomLogGenerator::addWinAmount(totalPay);
+		//RandomLogGenerator::addWinAmount(totalPay);
 		return totalPay;
 	}
 
@@ -313,7 +355,8 @@ public:
 class PlayerSimulation {
 public:
 	PlayerSimulation(int startCredits, int targetCredits, std::shared_ptr<GameConfig> config, SymbolStructure& symbolStructure, Stats& stats)
-		: startCredits(startCredits), targetCredits(targetCredits), gameConfig(config), symbolStructure(symbolStructure), stats(stats) {}
+		: startCredits(startCredits), targetCredits(targetCredits), gameConfig(config), symbolStructure(symbolStructure), stats(stats) {
+	}
 
 	bool simulate() {
 		int currentCredits = startCredits;

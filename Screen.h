@@ -11,6 +11,11 @@
 using namespace std;
 using json = nlohmann::json;
 
+struct SideCell {
+    std::string name;
+    bool boosted = false;
+};
+
 class Screen {
 private:
     int numReels;
@@ -19,9 +24,10 @@ private:
     vector<vector<std::string>> grid;
 	// For over/under reels
     static constexpr int SIDE_LEN = 4;          // middle-four reels
-    std::array<std::string, SIDE_LEN> overRow{}; // index 0 ⟶ reel 1, 3 ⟶ reel 4
-    std::array<std::string, SIDE_LEN> underRow{}; 
-    
+    //std::array<std::string, SIDE_LEN> overRow{}; // index 0 ⟶ reel 1, 3 ⟶ reel 4
+    //std::array<std::string, SIDE_LEN> underRow{}; 
+    std::array<SideCell, SIDE_LEN> overRow{};  
+    std::array<SideCell, SIDE_LEN> underRow{};
 
 public:
     std::vector<std::pair<int, int>> markedPositions;
@@ -53,19 +59,30 @@ public:
         return symbol == target;
 	}
 
-    void setSideSymbol(bool over, int idx, const std::string& s) {
-        (over ? overRow : underRow)[idx] = s;
+    void setSideSymbol(bool over, int idx, const std::string& s, bool boosted = false) {
+        auto& cell = (over ? overRow : underRow)[idx];
+        cell.name = s;
+        cell.boosted = boosted;
     }
 
     std::string getSideSymbol(bool over, int idx) const {
-        return (over ? overRow : underRow)[idx];
+        return (over ? overRow : underRow)[idx].name;
     }
 
+    // Optional explicit boost accessors if you want them:
+    bool isSideBoosted(bool over, int idx) const {
+        return (over ? overRow : underRow)[idx].boosted;
+    }
+    void setSideBoosted(bool over, int idx, bool b) {
+        (over ? overRow : underRow)[idx].boosted = b;
+    }
+
+
     // add symbols to over/under reels from ReelSet
-    void addSideSymbols(bool over, const ReelSet& rs) {
+    void addSideSymbols(bool over, const ReelSet& rs, std::vector<bool> boostVec = { 0,0,0,0 }) {
         const auto& strip = rs.reels[0].symbols;
         for (int i = 0; i < SIDE_LEN; ++i)
-            setSideSymbol(over, i, strip[(rs.currentIndices[0] + i) % strip.size()]);
+            setSideSymbol(over, i, strip[(rs.currentIndices[0] + i) % strip.size()], boostVec[i]);
     }
 
 
@@ -195,8 +212,8 @@ public:
         }
         // 2) side rows
         if (middleReel(reelIndex)) {
-            if (match(overRow[reelIndex - 1], symbol, includeWild)) ++count;
-            if (match(underRow[reelIndex - 1], symbol, includeWild)) ++count; // future-proof
+            if (match(overRow[reelIndex - 1].name, symbol, includeWild)) ++count;
+            if (match(underRow[reelIndex - 1].name, symbol, includeWild)) ++count;
         }
         return count;
     }
@@ -239,7 +256,8 @@ public:
             json overJson = json::array();
             overJson.push_back(" ");
             for (int i = 0; i < SIDE_LEN; ++i) {
-                overJson.push_back(overRow[i]);
+                const auto& c = overRow[i];
+                overJson.push_back(c.boosted ? (c.name + "*") : c.name);
             }
             overJson.push_back(" ");
             screenJson.push_back(overJson);
@@ -261,7 +279,8 @@ public:
             json underJson = json::array();
             underJson.push_back(" ");
             for (int i = 0; i < SIDE_LEN; ++i) {
-                underJson.push_back(underRow[i]);
+                const auto& c = underRow[i];
+                underJson.push_back(c.boosted ? (c.name + "*") : c.name);
             }
             underJson.push_back(" ");
             screenJson.push_back(underJson);
@@ -282,13 +301,14 @@ public:
         int next = (left + SIDE_LEN) % N;      // <-- start AFTER the visible window
 
         for (int pos = 0; pos < SIDE_LEN; ++pos) {
-            while (row[pos].empty()) {
+            while (row[pos].name.empty()) {
                 // shift visible window one step LEFT
                 for (int p = pos; p < SIDE_LEN - 1; ++p)
                     row[p] = row[p + 1];
 
                 // bring the next symbol in on the RIGHT
-                row[SIDE_LEN - 1] = strip[next];
+                //row[SIDE_LEN - 1] = strip[next];
+                row[SIDE_LEN - 1] = SideCell{ strip[next], false }; // new symbol, not boosted
 
                 // the window advanced by one:
                 left = (left + 1) % N;
@@ -362,10 +382,9 @@ public:
                 grid[reel][row] = "";  // Clear the winning symbol in the grid
             } else if (middleReel(reel)) {
                 if (row == -1) {
-                    overRow[reel - 1] = ""; // Remove symbol from overRow
-                } else if (row == -2) {
-                    underRow[reel - 1] = ""; // Remove symbol from underRow
-                }
+                    overRow[reel - 1].name = ""; overRow[reel - 1].boosted = false; }
+                else if (row == -2) { 
+                    underRow[reel - 1].name = ""; underRow[reel - 1].boosted = false; }
             }
         }
     }
