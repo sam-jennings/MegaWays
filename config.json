@@ -4,6 +4,10 @@
   "gameMode": "regular",
   "simulations": 100000000,
 
+  "optimizer": {
+    "reelSets": ["baseLow", "baseHigh"]
+  },
+
   "rows": 3,
   "reels": 6,
   "payHeaders": ["Base", "Tumbles","Free Spins", "Total"],
