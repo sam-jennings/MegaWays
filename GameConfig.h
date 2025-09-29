@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <mutex>
+#include <iomanip>
 #include "Symbols.h"
 #include "PrizeDistribution.h"
 
@@ -197,6 +198,57 @@ public:
         }
         return prizeDists;
     }
+
+    nlohmann::json reelSetToJson(const ReelSet& reelSet, const std::string& name = "") const {
+        nlohmann::json node;
+        if (!name.empty()) {
+            node["name"] = name;
+        }
+        node["mask"] = reelSet.getMask();
+        nlohmann::json reelsJson = nlohmann::json::array();
+        for (size_t i = 0; i < reelSet.reels.size(); ++i) {
+            nlohmann::json reelNode;
+            reelNode["name"] = "Reel" + std::to_string(i + 1);
+            reelNode["symbols"] = reelSet.reels[i].symbols;
+            if (!reelSet.reels[i].weights.empty()) {
+                reelNode["weights"] = reelSet.reels[i].weights;
+            }
+            reelsJson.push_back(reelNode);
+        }
+        node["reels"] = reelsJson;
+        return node;
+    }
+
+    void writeReelSetToFile(const ReelSet& reelSet, const std::string& path, const std::string& name = "") const {
+        nlohmann::json data = reelSetToJson(reelSet, name);
+        std::ofstream ofs(path);
+        if (!ofs.is_open()) {
+            throw std::runtime_error("Failed to open " + path);
+        }
+        ofs << std::setw(2) << data;
+    }
+
+    ReelSet readReelSetFromFile(const std::string& path) const {
+        std::ifstream ifs(path);
+        if (!ifs.is_open()) {
+            throw std::runtime_error("Failed to open " + path);
+        }
+        nlohmann::json data;
+        ifs >> data;
+        std::vector<Reel> reels;
+        for (const auto& reelNode : data["reels"]) {
+            std::vector<std::string> symbols = reelNode["symbols"].get<std::vector<std::string>>();
+            std::vector<int> weights;
+            if (reelNode.contains("weights")) {
+                weights = reelNode["weights"].get<std::vector<int>>();
+            }
+            reels.emplace_back(symbols, weights);
+        }
+        std::string mask = data.contains("mask") ? data["mask"].get<std::string>() : "";
+        ReelSet reelSet(reels, mask);
+        return reelSet;
+    }
+
 
 
 

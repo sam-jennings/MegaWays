@@ -2,6 +2,14 @@
 #include "GameConfig.h"
 #include "Stats.h"
 #include "Screen.h"
+#include <cstdint>
+
+struct EvalMetrics {
+        double baseHitRate = 0.0;
+        double avgTumblesPerHit = 0.0;
+        double rtp = 0.0;
+        uint64_t spins = 0;
+};
 
 class GameInstance {
 
@@ -71,18 +79,23 @@ private:
 
 public:
 
-	explicit GameInstance(std::shared_ptr<GameConfig> config, SymbolStructure& symbolStructure, Stats& stats)
-		: config(config), symbolStructure(symbolStructure), stats(stats),
-		spinCount(0) {
-		initializeGame();
-	}
+        explicit GameInstance(std::shared_ptr<GameConfig> config, SymbolStructure& symbolStructure, Stats& stats)
+                : config(config), symbolStructure(symbolStructure), stats(stats),
+                spinCount(0) {
+                initializeGame();
+        }
 
 
-	// Method to simulate a single spin and return the result
-	double simulateSingleSpin() {
-		playBaseGame(1);  // Simulate one spin
-		double lastSpinPayout = stats.getLastSpinPayout();  // Retrieve payout from the last spin
-		return lastSpinPayout - cost;  // Return net gain/loss (payout minus cost of one spin)
+        void setActiveBaseReelSet(const ReelSet& rs);
+
+        EvalMetrics evaluateReelSet(const ReelSet& rs, uint64_t spins, uint64_t seed);
+
+
+        // Method to simulate a single spin and return the result
+        double simulateSingleSpin() {
+                playBaseGame(1);  // Simulate one spin
+                double lastSpinPayout = stats.getLastSpinPayout();  // Retrieve payout from the last spin
+                return lastSpinPayout - cost;  // Return net gain/loss (payout minus cost of one spin)
 	}
 
 
@@ -250,7 +263,7 @@ public:
 		return boostCount;
 	}
 
-	vector<double> handleCascades(Screen& screen, ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame, int& globalMult) {
+        vector<double> handleCascades(Screen& screen, ReelSet& reelSet, ReelSet& offScreenReelSet, bool useDifferentReelSet, bool baseGame, int& globalMult, int* tumbleOut = nullptr) {
 		bool hasNewWins;
 		double initialWin = 0, tumbleWin = 0, tempWin;
 		int tumbleCount = 0;
@@ -298,8 +311,12 @@ public:
 		}
 		stats.recordFinalMult(globalMult);
 
-		return { initialWin, tumbleWin };
-	}
+                if (tumbleOut) {
+                        *tumbleOut = tumbleCount;
+                }
+
+                return { initialWin, tumbleWin };
+        }
 
 	double calculateWaysWins(Screen& screen, bool baseGame, int currentMult = 1) {
 		double totalPay = 0;

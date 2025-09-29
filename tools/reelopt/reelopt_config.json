@@ -1,0 +1,14 @@
+{
+  "evalSpins": 300000,
+  "maxIters": 2000,
+  "maxNoImprove": 150,
+  "seed": 12345,
+  "targetBaseMin": 0.1818,
+  "targetBaseMax": 0.2222,
+  "targetTumbles": 1.7,
+  "wBase": 1.0,
+  "wTumble": 1.0,
+  "wRtp": 0.25,
+  "rtpMin": 0.0,
+  "rtpMax": 10.0
+}
