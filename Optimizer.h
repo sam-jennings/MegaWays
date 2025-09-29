@@ -10,6 +10,7 @@
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -19,7 +20,10 @@ class RTPOptimizer {
 public:
     struct OptimizationResult {
         std::vector<int> weights;
-        double rtp;
+        std::string reelSetName;
+        double rtp = std::numeric_limits<double>::quiet_NaN();
+
+        bool isWeightBased() const { return !weights.empty(); }
     };
 
     struct Summary {
@@ -44,32 +48,50 @@ public:
     }
 
     Summary run() {
-        auto candidates = buildCandidateWeights();
+        auto candidates = buildCandidates();
         if (candidates.empty()) {
-            throw std::runtime_error("No reel weight candidates available for optimization.");
+            throw std::runtime_error("No optimizer candidates available. Configure reel sets or weights.");
         }
 
         Summary summary;
         summary.best.rtp = std::numeric_limits<double>::lowest();
 
-        for (const auto& weights : candidates) {
+        for (const auto& candidate : candidates) {
             try {
-                double rtp = evaluateWeights(weights);
-                summary.allResults.push_back({weights, rtp});
+                double rtp = evaluateCandidate(candidate);
+                OptimizationResult result;
+                if (candidate.kind == Candidate::Kind::Weights) {
+                    result.weights = candidate.weights;
+                }
+                else {
+                    result.reelSetName = candidate.reelSetName;
+                }
+                result.rtp = rtp;
+                summary.allResults.push_back(result);
                 if (rtp > summary.best.rtp) {
-                    summary.best = {weights, rtp};
+                    summary.best = result;
                 }
             }
             catch (const std::exception& ex) {
-                std::cerr << "Failed to evaluate weights [";
-                for (std::size_t i = 0; i < weights.size(); ++i) {
-                    if (i > 0) {
-                        std::cerr << ", ";
+                OptimizationResult failed;
+                if (candidate.kind == Candidate::Kind::Weights) {
+                    failed.weights = candidate.weights;
+                    std::cerr << "Failed to evaluate weights [";
+                    for (std::size_t i = 0; i < candidate.weights.size(); ++i) {
+                        if (i > 0) {
+                            std::cerr << ", ";
+                        }
+                        std::cerr << candidate.weights[i];
                     }
-                    std::cerr << weights[i];
+                    std::cerr << "]";
                 }
-                std::cerr << "]: " << ex.what() << std::endl;
-                summary.allResults.push_back({weights, std::numeric_limits<double>::quiet_NaN()});
+                else {
+                    failed.reelSetName = candidate.reelSetName;
+                    std::cerr << "Failed to evaluate reel set '" << candidate.reelSetName << "'";
+                }
+                std::cerr << ": " << ex.what() << std::endl;
+                failed.rtp = std::numeric_limits<double>::quiet_NaN();
+                summary.allResults.push_back(failed);
                 summary.failedCandidates++;
             }
         }
@@ -95,7 +117,7 @@ public:
                 continue;
             }
             bool seen = std::any_of(ranked.begin(), ranked.end(), [&](const OptimizationResult& existing) {
-                return existing.weights == result.weights;
+                return existing.weights == result.weights && existing.reelSetName == result.reelSetName;
             });
             if (!seen) {
                 ranked.push_back(result);
@@ -103,9 +125,10 @@ public:
         }
 
         out << "Optimizer evaluated " << summary.allResults.size()
-            << " reel weight combinations" << std::endl;
+            << " candidate" << (summary.allResults.size() == 1 ? "" : "s") << std::endl;
         if (summary.failedCandidates > 0) {
-            out << summary.failedCandidates << " combination(s) could not be evaluated." << std::endl;
+            out << summary.failedCandidates << " candidate" << (summary.failedCandidates == 1 ? " was" : "s were")
+                << " not evaluated successfully." << std::endl;
         }
 
         if (ranked.empty()) {
@@ -115,19 +138,22 @@ public:
             return;
         }
 
-        out << "Top combination (estimated RTP):" << std::endl;
+        out << "Top candidate (estimated RTP):" << std::endl;
         out << "  " << formatResult(ranked.front()) << std::endl;
 
         std::size_t additional = std::min<std::size_t>(ranked.size(), static_cast<std::size_t>(3));
         if (additional > 1) {
-            out << "Additional top combinations:" << std::endl;
+            out << "Additional top candidates:" << std::endl;
             for (std::size_t i = 1; i < additional; ++i) {
                 out << "  " << formatResult(ranked[i]) << std::endl;
             }
         }
 
-        out << "Spins per candidate: " << spinsPerCandidate
-            << ", weight step: " << weightStep << std::endl;
+        out << "Spins per candidate: " << spinsPerCandidate;
+        if (summary.best.isWeightBased()) {
+            out << ", weight step: " << weightStep;
+        }
+        out << std::endl;
     }
 
 private:
@@ -139,15 +165,62 @@ private:
     long long spinsPerCandidate;
     int weightStep;
 
-    std::vector<std::vector<int>> buildCandidateWeights() const {
-        std::vector<int> baseWeights = config->parseVec<int>("reelWeights", rtpKey);
-        std::vector<std::vector<int>> candidates;
+    struct Candidate {
+        enum class Kind { Weights, ReelSet };
+
+        static Candidate fromWeights(const std::vector<int>& w) {
+            Candidate c;
+            c.kind = Kind::Weights;
+            c.weights = w;
+            return c;
+        }
+
+        static Candidate fromReelSet(std::string name) {
+            Candidate c;
+            c.kind = Kind::ReelSet;
+            c.reelSetName = std::move(name);
+            return c;
+        }
+
+        Kind kind = Kind::Weights;
+        std::vector<int> weights;
+        std::string reelSetName;
+    };
+
+    std::vector<Candidate> buildCandidates() const {
+        std::vector<Candidate> candidates;
+
+        if (auto reelSets = config->getOptional<std::vector<std::string>>("optimizer/reelSets")) {
+            for (const auto& name : *reelSets) {
+                if (!config->hasReelSet(name)) {
+                    throw std::invalid_argument("Unknown reel set configured for optimization: " + name);
+                }
+                candidates.push_back(Candidate::fromReelSet(name));
+            }
+            return candidates;
+        }
+
+        if (auto singleReelSet = config->getOptional<std::string>("optimizer/reelSet")) {
+            if (!config->hasReelSet(*singleReelSet)) {
+                throw std::invalid_argument("Unknown reel set configured for optimization: " + *singleReelSet);
+            }
+            candidates.push_back(Candidate::fromReelSet(*singleReelSet));
+            return candidates;
+        }
+
+        std::vector<int> baseWeights;
+        try {
+            baseWeights = config->parseVec<int>("reelWeights", rtpKey);
+        }
+        catch (const std::exception&) {
+            baseWeights.clear();
+        }
 
         if (baseWeights.empty()) {
             return candidates;
         }
 
-        candidates.push_back(baseWeights);
+        candidates.push_back(Candidate::fromWeights(baseWeights));
         std::vector<int> current(baseWeights.size(), 0);
         generateWeightsRecursive(0, 100, current, candidates);
         return candidates;
@@ -156,11 +229,11 @@ private:
     void generateWeightsRecursive(int index,
                                   int remaining,
                                   std::vector<int>& current,
-                                  std::vector<std::vector<int>>& candidates) const {
+                                  std::vector<Candidate>& candidates) const {
         if (index == static_cast<int>(current.size()) - 1) {
             current[index] = remaining;
-            if (!containsCandidate(candidates, current)) {
-                candidates.push_back(current);
+            if (!containsWeightsCandidate(candidates, current)) {
+                candidates.push_back(Candidate::fromWeights(current));
             }
             return;
         }
@@ -171,37 +244,53 @@ private:
         }
     }
 
-    static bool containsCandidate(const std::vector<std::vector<int>>& candidates,
-                                  const std::vector<int>& candidate) {
-        return std::find(candidates.begin(), candidates.end(), candidate) != candidates.end();
+    static bool containsWeightsCandidate(const std::vector<Candidate>& candidates,
+                                         const std::vector<int>& candidate) {
+        return std::any_of(candidates.begin(), candidates.end(), [&](const Candidate& existing) {
+            return existing.kind == Candidate::Kind::Weights && existing.weights == candidate;
+        });
     }
 
-    double evaluateWeights(const std::vector<int>& weights) {
-        if (std::accumulate(weights.begin(), weights.end(), 0) <= 0) {
-            return std::numeric_limits<double>::lowest();
-        }
-
+    double evaluateCandidate(const Candidate& candidate) {
         Stats stats(symbolStructure, rtpHeaders, costPerSpin, false);
         stats.setNumIterations(spinsPerCandidate);
 
         GameInstance instance(config, symbolStructure, stats);
-        instance.setReelWeights(weights);
-        instance.playBaseGame(spinsPerCandidate);
 
+        switch (candidate.kind) {
+        case Candidate::Kind::Weights: {
+            if (std::accumulate(candidate.weights.begin(), candidate.weights.end(), 0) <= 0) {
+                return std::numeric_limits<double>::lowest();
+            }
+            instance.setReelWeights(candidate.weights);
+            break;
+        }
+        case Candidate::Kind::ReelSet:
+            instance.forceBaseReelSet(candidate.reelSetName);
+            break;
+        }
+
+        instance.playBaseGame(spinsPerCandidate);
         return stats.getAverageRTP();
     }
 
     std::string formatResult(const OptimizationResult& result) const {
         std::ostringstream oss;
         oss << std::fixed << std::setprecision(6);
-        oss << "RTP " << result.rtp << " with weights [";
-        for (std::size_t i = 0; i < result.weights.size(); ++i) {
-            if (i > 0) {
-                oss << ", ";
-            }
-            oss << result.weights[i];
+        oss << "RTP " << result.rtp;
+        if (!result.reelSetName.empty()) {
+            oss << " using reel set \"" << result.reelSetName << "\"";
         }
-        oss << "]";
+        else {
+            oss << " with weights [";
+            for (std::size_t i = 0; i < result.weights.size(); ++i) {
+                if (i > 0) {
+                    oss << ", ";
+                }
+                oss << result.weights[i];
+            }
+            oss << "]";
+        }
         return oss.str();
     }
 };

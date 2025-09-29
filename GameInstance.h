@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <iterator>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
 
 class GameInstance {
@@ -32,7 +33,8 @@ private:
 	ReelSet baseReelSet, tumbleReelSet, noWinReelSet, overReelSet, underReelSet;
 	std::unordered_map<std::string, ReelSet> allReelSets;
 	std::vector<int> reelWeights;
-	PrizeDistribution<int> ReelsPD;
+        PrizeDistribution<int> ReelsPD;
+        std::optional<std::string> forcedBaseReelSet;
 	vector<PrizeDistribution<double>> moneyPrizes;
 	// Game variables
 	Screen screen;
@@ -81,6 +83,18 @@ public:
                 : config(config), symbolStructure(symbolStructure), stats(stats),
                 spinCount(0) {
                 initializeGame();
+        }
+
+
+        void forceBaseReelSet(const std::string& reelSetName) {
+                if (allReelSets.find(reelSetName) == allReelSets.end()) {
+                        throw std::invalid_argument("Unknown reel set: " + reelSetName);
+                }
+                forcedBaseReelSet = reelSetName;
+        }
+
+        void clearForcedReelSet() {
+                forcedBaseReelSet.reset();
         }
 
 
@@ -144,22 +158,32 @@ public:
 			overReelSet = allReelSets["over"];
 			underReelSet = allReelSets["under"];
 
-                        int reelID = ReelsPD.getRandomPrize();
-                        lastReelSetID = reelID;
-                        switch (reelID) {
-                        case 0:
-                                activeReels = allReelSets["baseLow"];
-                                break;
-                        case 1:
-                                activeReels = allReelSets["baseHigh"];
-                                break;
-                        default:
-                                if (!allReelSets.empty()) {
-                                        auto it = allReelSets.begin();
-                                        std::advance(it, reelID % allReelSets.size());
-                                        activeReels = it->second;
+                        if (forcedBaseReelSet) {
+                                auto it = allReelSets.find(*forcedBaseReelSet);
+                                if (it == allReelSets.end()) {
+                                        throw std::runtime_error("Forced reel set not found at runtime: " + *forcedBaseReelSet);
                                 }
-                                break;
+                                activeReels = it->second;
+                                lastReelSetID = -1;
+                        }
+                        else {
+                                int reelID = ReelsPD.getRandomPrize();
+                                lastReelSetID = reelID;
+                                switch (reelID) {
+                                case 0:
+                                        activeReels = allReelSets["baseLow"];
+                                        break;
+                                case 1:
+                                        activeReels = allReelSets["baseHigh"];
+                                        break;
+                                default:
+                                        if (!allReelSets.empty()) {
+                                                auto it = allReelSets.begin();
+                                                std::advance(it, reelID % allReelSets.size());
+                                                activeReels = it->second;
+                                        }
+                                        break;
+                                }
                         }
 			activeReels.spinReels();
 			overReelSet.spinReels();

@@ -1,12 +1,18 @@
 #pragma once
 
 
+#include <fstream>
+#include <iostream>
+#include <optional>
+#include <sstream>
+#include <stdexcept>
 #include <string>
-#include <vector>
 #include <unordered_map>
 #include <mutex>
+#include <vector>
 #include "Symbols.h"
 #include "PrizeDistribution.h"
+#include "json.hpp"
 
 // Forward declaration if Game-related classes need to be referenced
 class Stats; // Forward declaration of Stats class
@@ -15,7 +21,7 @@ class GameConfig {
     //  friend class Stats; // Declare Stats as a friend
 private:
     std::string filename;
-    std::mutex config_mutex;
+    mutable std::mutex config_mutex;
 
     // JSON object to hold the configuration data
     nlohmann::json config_json;
@@ -63,6 +69,48 @@ public:
         }
         else
             return config_json[key].get<std::vector<T>>();
+    }
+
+    template <typename T>
+    std::optional<T> getOptional(const std::string& path) const {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        const nlohmann::json* node = &config_json;
+        std::istringstream stream(path);
+        std::string segment;
+
+        while (std::getline(stream, segment, '/')) {
+            if (segment.empty()) {
+                continue;
+            }
+            if (!node->contains(segment)) {
+                return std::nullopt;
+            }
+            node = &(*node)[segment];
+        }
+
+        if (node == nullptr) {
+            return std::nullopt;
+        }
+
+        try {
+            return node->get<T>();
+        }
+        catch (const std::exception&) {
+            return std::nullopt;
+        }
+    }
+
+    bool hasReelSet(const std::string& reelSetName) const {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        if (!config_json.contains("reel_sets")) {
+            return false;
+        }
+        for (const auto& item : config_json["reel_sets"]) {
+            if (item.contains("name") && item["name"] == reelSetName) {
+                return true;
+            }
+        }
+        return false;
     }
 
     template<typename T>
