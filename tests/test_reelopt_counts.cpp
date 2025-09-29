@@ -59,5 +59,3 @@ int main() {
     return 0;
 }
 
-#include "../GameInstance.cpp"
-#include "../src/optimizer/ReelOptimizer.cpp"
