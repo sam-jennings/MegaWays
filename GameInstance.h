@@ -3,6 +3,11 @@
 #include "Stats.h"
 #include "Screen.h"
 
+#include <algorithm>
+#include <iterator>
+#include <numeric>
+#include <stdexcept>
+
 class GameInstance {
 
 private:
@@ -14,7 +19,7 @@ private:
 	// Game parameters
 	int numRows;
 	int numReels;
-	vector<PrizeDistribution<int>> reelHeightPD;
+        vector<PrizeDistribution<int>> reelHeightPD;
 	int cost;
 	std::vector<std::string> symbols;
 	std::map<std::string, std::vector<int>> paytable;
@@ -57,9 +62,10 @@ private:
 			allReelSets = config->parseAllReelSets();
 			/* baseReelSet = config->parseReelSet("baseLow");
 			 tumbleReelSet = config->parseReelSet("tumbleHigh");*/
-			reelWeights = config->parseVec<int32_t>("reelWeights", rtpKey);
-			//  reelWeightsFree = config->parseVec<int32_t>("reelWeightsFree");
-			ReelsPD = PrizeDistribution<int>("R-WTS", std::vector<int>{0, 1}, reelWeights);
+                        reelWeights = config->parseVec<int32_t>("reelWeights", rtpKey);
+                        std::vector<int> reelIndices(reelWeights.size());
+                        std::iota(reelIndices.begin(), reelIndices.end(), 0);
+                        ReelsPD = PrizeDistribution<int>("R-WTS", reelIndices, reelWeights);
 			cost = config->parseVar<int>("cost");
 			symbols = symbolStructure.getSymbols();
 			paytable = symbolStructure.getPaytable();
@@ -71,11 +77,35 @@ private:
 
 public:
 
-	explicit GameInstance(std::shared_ptr<GameConfig> config, SymbolStructure& symbolStructure, Stats& stats)
-		: config(config), symbolStructure(symbolStructure), stats(stats),
-		spinCount(0) {
-		initializeGame();
-	}
+        explicit GameInstance(std::shared_ptr<GameConfig> config, SymbolStructure& symbolStructure, Stats& stats)
+                : config(config), symbolStructure(symbolStructure), stats(stats),
+                spinCount(0) {
+                initializeGame();
+        }
+
+
+        void setReelWeights(const std::vector<int>& newWeights) {
+                if (newWeights.empty()) {
+                        throw std::invalid_argument("Reel weight vector cannot be empty");
+                }
+                if (newWeights.size() != reelWeights.size()) {
+                        throw std::invalid_argument("Reel weight vector size mismatch");
+                }
+                if (std::any_of(newWeights.begin(), newWeights.end(), [](int value) { return value < 0; })) {
+                        throw std::invalid_argument("Reel weights must be non-negative");
+                }
+                int totalWeight = std::accumulate(newWeights.begin(), newWeights.end(), 0);
+                if (totalWeight <= 0) {
+                        throw std::invalid_argument("Reel weights must contain at least one positive value");
+                }
+
+                reelWeights = newWeights;
+                ReelsPD.setWeights(reelWeights);
+        }
+
+        const std::vector<int>& getReelWeights() const {
+                return reelWeights;
+        }
 
 
 	// Method to simulate a single spin and return the result
@@ -114,17 +144,23 @@ public:
 			overReelSet = allReelSets["over"];
 			underReelSet = allReelSets["under"];
 
-			int reelID = 1;
-			//int reelID = ReelsPD.getRandomPrize();
-			lastReelSetID = reelID;
-			switch (reelID) {
-			case 0:
-				activeReels = allReelSets["baseLow"];
-				break;
-			case 1:
-				activeReels = allReelSets["baseHigh"];
-				break;
-			}
+                        int reelID = ReelsPD.getRandomPrize();
+                        lastReelSetID = reelID;
+                        switch (reelID) {
+                        case 0:
+                                activeReels = allReelSets["baseLow"];
+                                break;
+                        case 1:
+                                activeReels = allReelSets["baseHigh"];
+                                break;
+                        default:
+                                if (!allReelSets.empty()) {
+                                        auto it = allReelSets.begin();
+                                        std::advance(it, reelID % allReelSets.size());
+                                        activeReels = it->second;
+                                }
+                                break;
+                        }
 			activeReels.spinReels();
 			overReelSet.spinReels();
 			underReelSet.spinReels();

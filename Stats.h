@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <fstream>
 #include <cmath> // Include for std::sqrt
+#include <numeric>
 #include <unordered_map>
 #include <mutex>
 
@@ -21,7 +22,7 @@ namespace std {
 
 class Stats {
 private:
-	std::mutex statsMutex;
+        mutable std::mutex statsMutex;
 
 	long long numIterations;
 	long long baseGameHits = 0;
@@ -40,16 +41,17 @@ private:
 	double totalWinnings = 0.0;
 	std::pair<int, double> moneyEntry; // <count, amount>
 
-	std::unordered_map<std::pair<int, int>, long long, std::hash<std::pair<int, int>>> scaleFrequency;
+        std::unordered_map<std::pair<int, int>, long long, std::hash<std::pair<int, int>>> scaleFrequency;
+        bool detailedTracking;
 
 public:
-	explicit Stats(SymbolStructure& symbolStructure, const std::vector<std::string>& rtpHeaders, double costPerSpin)
-		: symbolStructure(symbolStructure), rtpHeaders(rtpHeaders), costPerSpin(costPerSpin) {
-		numIterations = 0;
-		totalWin = 0.0;
+        explicit Stats(SymbolStructure& symbolStructure, const std::vector<std::string>& rtpHeaders, double costPerSpin, bool enableDetailedTracking = true)
+                : symbolStructure(symbolStructure), rtpHeaders(rtpHeaders), costPerSpin(costPerSpin), detailedTracking(enableDetailedTracking) {
+                numIterations = 0;
+                totalWin = 0.0;
 
-		size_t numRTPs = rtpHeaders.size();
-		payVector.resize(numRTPs, 0.0);
+                size_t numRTPs = rtpHeaders.size();
+                payVector.resize(numRTPs, 0.0);
 		payFrequencies.resize(numRTPs);
 
 		// featureHits.resize(featureNames.size(), 0);
@@ -64,36 +66,51 @@ public:
 		numIterations = iterations;
 	}
 
-	void trackResult(const std::string& symbol, int length, int ways, double pay, bool base) {
-		std::lock_guard<std::mutex> lock(statsMutex);
-		int symbolIndex = symbolStructure.findSymbolIndex(symbol);
-		int lengthIndex = length - 1;
-		if (base) {
-			baseSymHits[symbolIndex][lengthIndex] += ways;
+        void trackResult(const std::string& symbol, int length, int ways, double pay, bool base) {
+                if (!detailedTracking) {
+                        return;
+                }
+                std::lock_guard<std::mutex> lock(statsMutex);
+                int symbolIndex = symbolStructure.findSymbolIndex(symbol);
+                int lengthIndex = length - 1;
+                if (base) {
+                        baseSymHits[symbolIndex][lengthIndex] += ways;
 			baseSymPays[symbolIndex][lengthIndex] += pay;
 		}
 	}
 
-	void recordScatterHit(int prize) {
-		std::lock_guard<std::mutex> lock(statsMutex);
-		scatterHits[prize]++;
-	}
+        void recordScatterHit(int prize) {
+                if (!detailedTracking) {
+                        return;
+                }
+                std::lock_guard<std::mutex> lock(statsMutex);
+                scatterHits[prize]++;
+        }
 
-	void recordTumbleFrequency(int tumbles) {
-		std::lock_guard<std::mutex> lock(statsMutex);
-		tumbleFreq[tumbles]++;
-	}
+        void recordTumbleFrequency(int tumbles) {
+                if (!detailedTracking) {
+                        return;
+                }
+                std::lock_guard<std::mutex> lock(statsMutex);
+                tumbleFreq[tumbles]++;
+        }
 
-	void recordFinalMult(int tumbles) {
-		std::lock_guard<std::mutex> lock(statsMutex);
-		multFreq[tumbles]++;
-	}
+        void recordFinalMult(int tumbles) {
+                if (!detailedTracking) {
+                        return;
+                }
+                std::lock_guard<std::mutex> lock(statsMutex);
+                multFreq[tumbles]++;
+        }
 
-	//record number of free spins
-	void recordFreeSpins(int freeSpins) {
-		std::lock_guard<std::mutex> lock(statsMutex);
-		freeSpinsFreq[freeSpins]++;
-	}
+        //record number of free spins
+        void recordFreeSpins(int freeSpins) {
+                if (!detailedTracking) {
+                        return;
+                }
+                std::lock_guard<std::mutex> lock(statsMutex);
+                freeSpinsFreq[freeSpins]++;
+        }
 
 	double calculateAverageTumbleFrequency() const {
 		long long totalTumbles = 0;
@@ -121,16 +138,18 @@ public:
 		return static_cast<double>(totalFreeSpins) / totalOccurrences;
 	}
 
-	void completeWager(const std::vector<double>& pays) {
-		std::lock_guard<std::mutex> lock(statsMutex);
-		for (size_t i = 0; i < pays.size(); i++) {
-			payVector[i] += pays[i];
-			payFrequencies[i][pays[i]]++;
-		}
-		if (pays[0] > 0) {
-			baseGameHits++;
-		}
-		lastPay = pays;
+        void completeWager(const std::vector<double>& pays) {
+                std::lock_guard<std::mutex> lock(statsMutex);
+                for (size_t i = 0; i < pays.size(); i++) {
+                        payVector[i] += pays[i];
+                        if (detailedTracking) {
+                                payFrequencies[i][pays[i]]++;
+                        }
+                }
+                if (pays[0] > 0) {
+                        baseGameHits++;
+                }
+                lastPay = pays;
 	}
 
 	//void trackFeatureActivation(const std::string& featureName) {
@@ -142,10 +161,13 @@ public:
 	//    }
 	//}
 
-	void trackFeatureActivation(const std::string& featureName) {
-		std::lock_guard<std::mutex> lock(statsMutex);
-		featureHits[featureName]++; // Increment the count for the feature
-	}
+        void trackFeatureActivation(const std::string& featureName) {
+                if (!detailedTracking) {
+                        return;
+                }
+                std::lock_guard<std::mutex> lock(statsMutex);
+                featureHits[featureName]++; // Increment the count for the feature
+        }
 
 	double calculateStandardDeviation(const std::vector<double>& pays) const {
 		if (pays.empty()) return 0.0;
@@ -158,10 +180,15 @@ public:
 		return std::sqrt(variance);
 	}
 
-	void calculateStandardDeviations() {
-		std::lock_guard<std::mutex> lock(statsMutex);
-		standardDeviations.clear();
-		standardDeviations.resize(payFrequencies.size(), 0.0);
+        void calculateStandardDeviations() {
+                if (!detailedTracking) {
+                        std::lock_guard<std::mutex> lock(statsMutex);
+                        standardDeviations.assign(payFrequencies.size(), 0.0);
+                        return;
+                }
+                std::lock_guard<std::mutex> lock(statsMutex);
+                standardDeviations.clear();
+                standardDeviations.resize(payFrequencies.size(), 0.0);
 
 		for (size_t i = 0; i < payFrequencies.size(); ++i) {
 			double mean = 0.0;
@@ -183,53 +210,57 @@ public:
 		}
 	}
 
-	void aggregate(const Stats& other) {
-		std::lock_guard<std::mutex> lock(statsMutex);
+        void aggregate(const Stats& other) {
+                std::lock_guard<std::mutex> lock(statsMutex);
 
-		numIterations += other.numIterations;
-		totalWin += other.totalWin;
-		baseGameHits += other.baseGameHits;
+                numIterations += other.numIterations;
+                totalWin += other.totalWin;
+                baseGameHits += other.baseGameHits;
 
-		for (size_t i = 0; i < payVector.size(); ++i) {
-			payVector[i] += other.payVector[i];
-			for (const auto& freqPair : other.payFrequencies[i]) {
-				payFrequencies[i][freqPair.first] += freqPair.second;
-			}
-		}
+                for (size_t i = 0; i < payVector.size(); ++i) {
+                        payVector[i] += other.payVector[i];
+                        if (detailedTracking && other.detailedTracking) {
+                                for (const auto& freqPair : other.payFrequencies[i]) {
+                                        payFrequencies[i][freqPair.first] += freqPair.second;
+                                }
+                        }
+                }
 
-		// Aggregate featureHits
-		for (const auto& pair : other.featureHits) {
-			featureHits[pair.first] += pair.second;
-		}
+                if (detailedTracking && other.detailedTracking) {
+                        // Aggregate featureHits
+                        for (const auto& pair : other.featureHits) {
+                                featureHits[pair.first] += pair.second;
+                        }
 
-		for (size_t i = 0; i < baseSymHits.size(); ++i) {
-			for (size_t j = 0; j < baseSymHits[i].size(); ++j) {
-				baseSymHits[i][j] += other.baseSymHits[i][j];
-				baseSymPays[i][j] += other.baseSymPays[i][j];
-			}
-		}
+                        for (size_t i = 0; i < baseSymHits.size(); ++i) {
+                                for (size_t j = 0; j < baseSymHits[i].size(); ++j) {
+                                        baseSymHits[i][j] += other.baseSymHits[i][j];
+                                        baseSymPays[i][j] += other.baseSymPays[i][j];
+                                }
+                        }
 
-		for (const auto& pair : other.scatterHits) {
-			scatterHits[pair.first] += pair.second;
-		}
+                        for (const auto& pair : other.scatterHits) {
+                                scatterHits[pair.first] += pair.second;
+                        }
 
-		for (const auto& pair : other.tumbleFreq) {
-			tumbleFreq[pair.first] += pair.second;
-		}
+                        for (const auto& pair : other.tumbleFreq) {
+                                tumbleFreq[pair.first] += pair.second;
+                        }
 
-		for (const auto& pair : other.multFreq) {
-			multFreq[pair.first] += pair.second;
-		}
+                        for (const auto& pair : other.multFreq) {
+                                multFreq[pair.first] += pair.second;
+                        }
 
-		for (const auto& pair : other.freeSpinsFreq) {
-			freeSpinsFreq[pair.first] += pair.second;
-		}
+                        for (const auto& pair : other.freeSpinsFreq) {
+                                freeSpinsFreq[pair.first] += pair.second;
+                        }
 
-		for (const auto& pair : other.scaleFrequency) {
-			scaleFrequency[pair.first] += pair.second;
-		}
-		moneyEntry.first += other.moneyEntry.first;
-		moneyEntry.second += other.moneyEntry.second;
+                        for (const auto& pair : other.scaleFrequency) {
+                                scaleFrequency[pair.first] += pair.second;
+                        }
+                }
+                moneyEntry.first += other.moneyEntry.first;
+                moneyEntry.second += other.moneyEntry.second;
 
 
 		totalWins += other.totalWins;
@@ -355,16 +386,45 @@ public:
 		file.close();
 	}
 
-	void printFrequencyTables() const {
-		for (size_t i = 0; i < payFrequencies.size(); ++i) {
-			printFrequencyTableToFile(rtpHeaders[i], payFrequencies[i]);
-		}
-	}
+        void printFrequencyTables() const {
+                if (!detailedTracking) {
+                        return;
+                }
+                for (size_t i = 0; i < payFrequencies.size(); ++i) {
+                        printFrequencyTableToFile(rtpHeaders[i], payFrequencies[i]);
+                }
+        }
 
-	int getTumbleCount() const {
-		return std::accumulate(tumbleFreq.begin(), tumbleFreq.end(), 0,
-			[](int sum, const auto& pair) { return sum + pair.second; });
-	}
+        double getTotalPayout() const {
+                std::lock_guard<std::mutex> lock(statsMutex);
+                if (payVector.empty()) {
+                        return 0.0;
+                }
+                return payVector.back();
+        }
+
+        long long getNumIterations() const {
+                std::lock_guard<std::mutex> lock(statsMutex);
+                return numIterations;
+        }
+
+        double getAverageRTP() const {
+                std::lock_guard<std::mutex> lock(statsMutex);
+                if (numIterations == 0 || costPerSpin == 0.0) {
+                        return 0.0;
+                }
+                if (payVector.empty()) {
+                        return 0.0;
+                }
+                double totalPayout = payVector.back();
+                double totalCost = static_cast<double>(numIterations) * costPerSpin;
+                return totalPayout / totalCost;
+        }
+
+        int getTumbleCount() const {
+                return std::accumulate(tumbleFreq.begin(), tumbleFreq.end(), 0,
+                        [](int sum, const auto& pair) { return sum + pair.second; });
+        }
 
 	double getFreeSpinPayout() const { //change depending on payVector
 		// Calculate free spin pays
