@@ -6,11 +6,29 @@
 
 #include <random>
 #include <numeric>
+#include <cstdint>
 #include "RandomLogGenerator.h" // Include if you use RandomLogGenerator in these functions
 
 extern int instructionIndex; // Same for instructionIndex if it's used globally
 
 // Define a method to generate random numbers within a specified range
+inline std::mt19937& getThreadRng() {
+    thread_local std::mt19937 rng{ std::random_device{}() };
+    return rng;
+}
+
+inline std::mt19937 getThreadRngState() {
+    return getThreadRng();
+}
+
+inline void setThreadRngState(const std::mt19937& state) {
+    getThreadRng() = state;
+}
+
+inline void seedThreadRng(uint64_t seed) {
+    getThreadRng().seed(static_cast<std::mt19937::result_type>(seed));
+}
+
 inline int getRand(const std::string& mask, int range) {
     int index;
     if (logMode == REPLAY) {
@@ -29,11 +47,9 @@ inline int getRand(const std::string& mask, int range) {
         index = currentInstruction.result;
     }
     else {
-        std::random_device rd;
-        std::mt19937 gen(rd());
         std::uniform_int_distribution<> dis(0, range - 1);
-        index = dis(gen);
-        if (logMode == 1) {
+        index = dis(getThreadRng());
+        if (logMode == LOGGING) {
             RandTriple randTriple = { mask, index, range };
             RandomLogGenerator::addRandom(randTriple);
         }

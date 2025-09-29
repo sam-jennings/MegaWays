@@ -111,6 +111,9 @@ public:
     // Default constructor
     ReelSet() {}
 
+    const std::string& getMask() const { return mask; }
+    void setMask(const std::string& m) { mask = m; }
+
     // Calculate complete cycle
     int getCycle() const {
         int cycle = 1;
