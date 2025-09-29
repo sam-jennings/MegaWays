@@ -22,6 +22,7 @@ private:
 
 	std::vector<std::vector<int>> boostWeights;
 	std::vector<PrizeDistribution<int>> boostPDVec;
+	std::vector<bool> boostVecOver, boostVecUnder;
 	// ReelSets
 	ReelSet baseReelSet, tumbleReelSet, noWinReelSet, overReelSet, underReelSet;
 	std::unordered_map<std::string, ReelSet> allReelSets;
@@ -92,7 +93,7 @@ public:
 
 		int globalMult;
 
-		std::vector<bool> boostVecOver, boostVecUnder;
+		
 		boostPDVec.resize(boostWeights.size());
 		for (int i = 0; i < boostWeights.size(); ++i) {
 			boostPDVec[i] = PrizeDistribution<int>("BS_" + std::to_string(i + 1), std::vector<int>{0, 1}, boostWeights[i]);
@@ -186,12 +187,7 @@ public:
 
 		ReelSet freeReelSet;
 
-		if (getRand("R-WTS", reelWeights[0] + reelWeights[1]) < reelWeights[0]) {
-			freeReelSet = allReelSets["baseLow"];
-		}
-		else {
-			freeReelSet = allReelSets["baseHigh"];
-		}
+	
 
 
 		Screen screen(numReels, numRows);
@@ -202,9 +198,30 @@ public:
 			tumbleCount = 0;
 			RandomLogGenerator::newSpin();
 
+			if (getRand("R-WTS", reelWeights[0] + reelWeights[1]) < reelWeights[0]) {
+				freeReelSet = allReelSets["baseLow"];
+			}
+			else {
+				freeReelSet = allReelSets["baseHigh"];
+			}
 
 			freeReelSet.spinReels();
+			overReelSet.spinReels();
+			underReelSet.spinReels();
+
+			// Determine boost for over/under reels
+			boostVecOver.clear();
+			boostVecUnder.clear();
+			for (int b = 0; b < boostWeights.size(); ++b) {
+				boostVecOver.push_back(boostPDVec[b].getRandomPrize());
+				boostVecUnder.push_back(boostPDVec[b].getRandomPrize());
+			}
+
 			screen.generateScreen(freeReelSet);
+			screen.addSideSymbols(true, overReelSet, boostVecOver);
+			screen.addSideSymbols(false, underReelSet, boostVecUnder);
+
+			
 
 
 			freeSpinsRemaining--;
@@ -269,8 +286,8 @@ public:
 
 				screen.removeMarkedPositions();  // Remove the symbols at winning positions        
 				screen.cascadeSymbols(reelSet, useDifferentReelSet, offScreenReelSet);  // Cascade new symbols down
-				screen.cascadeSideRow(true, overReelSet); // Cascade over row
-				screen.cascadeSideRow(false, underReelSet); // Cascade under row
+				screen.cascadeSideRow(true, overReelSet, 50); // Cascade over row
+				screen.cascadeSideRow(false, underReelSet, 50); // Cascade under row
 
 			}
 		} while (hasNewWins);

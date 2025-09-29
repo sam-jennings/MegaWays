@@ -289,7 +289,7 @@ public:
         return screenJson;
     }
 
-    void cascadeSideRow(bool over, ReelSet& rs)
+    void cascadeSideRow(bool over, ReelSet& rs, int boostProb)
     {
         auto& row = over ? overRow : underRow;
         const auto& strip = rs.reels[0].symbols;
@@ -308,7 +308,8 @@ public:
 
                 // bring the next symbol in on the RIGHT
                 //row[SIDE_LEN - 1] = strip[next];
-                row[SIDE_LEN - 1] = SideCell{ strip[next], false }; // new symbol, not boosted
+				bool boosted = getRand("TB", 100) < boostProb;
+                row[SIDE_LEN - 1] = SideCell{ strip[next], boosted }; 
 
                 // the window advanced by one:
                 left = (left + 1) % N;
